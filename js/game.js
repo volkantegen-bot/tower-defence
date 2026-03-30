@@ -1,0 +1,4043 @@
+// ============================================================
+// TOWER DEFENSE - Military Warfare Edition
+// ============================================================
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// ---- Sound System (Web Audio API, procedural) ----
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+
+function initAudio() {
+    if (!audioCtx) audioCtx = new AudioCtx();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+// Generic noise burst for gunshots
+function playSound(type, volume = 0.15) {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    const gain = audioCtx.createGain();
+    gain.connect(audioCtx.destination);
+
+    if (type === 'mg') {
+        // Machine gun: short white noise burst
+        const dur = 0.04;
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        gain.gain.setValueAtTime(volume * 0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        src.connect(gain);
+        src.start(now);
+    } else if (type === 'sniper') {
+        // Sniper: sharp crack
+        const dur = 0.1;
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.01));
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        gain.gain.setValueAtTime(volume * 0.5, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        src.connect(gain);
+        src.start(now);
+    } else if (type === 'missile') {
+        // Missile: low whoosh
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(60, now + 0.2);
+        gain.gain.setValueAtTime(volume * 0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 0.2);
+    } else if (type === 'explosion') {
+        // Explosion: noise + low rumble
+        const dur = 0.3;
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.08));
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(800, now);
+        filter.frequency.exponentialRampToValueAtTime(100, now + dur);
+        gain.gain.setValueAtTime(volume * 0.6, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        src.connect(filter);
+        filter.connect(gain);
+        src.start(now);
+    } else if (type === 'enemy_shot') {
+        // Enemy shooting: short pop
+        const dur = 0.06;
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.015));
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.value = 600;
+        gain.gain.setValueAtTime(volume * 0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        src.connect(filter);
+        filter.connect(gain);
+        src.start(now);
+    } else if (type === 'enemy_tank') {
+        // Tank shot: deep boom
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(80, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.15);
+        gain.gain.setValueAtTime(volume * 0.5, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 0.15);
+        // Add noise layer
+        const dur2 = 0.12;
+        const buf2 = audioCtx.createBuffer(1, audioCtx.sampleRate * dur2, audioCtx.sampleRate);
+        const d2 = buf2.getChannelData(0);
+        for (let i = 0; i < d2.length; i++) d2[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.03));
+        const src2 = audioCtx.createBufferSource();
+        src2.buffer = buf2;
+        const g2 = audioCtx.createGain();
+        g2.gain.setValueAtTime(volume * 0.3, now);
+        g2.gain.exponentialRampToValueAtTime(0.001, now + dur2);
+        src2.connect(g2);
+        g2.connect(audioCtx.destination);
+        src2.start(now);
+    } else if (type === 'flame') {
+        // Flamethrower: sustained hiss
+        const dur = 0.1;
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 2000;
+        filter.Q.value = 0.5;
+        gain.gain.setValueAtTime(volume * 0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        src.connect(filter);
+        filter.connect(gain);
+        src.start(now);
+    } else if (type === 'emp') {
+        // EMP: electric zap
+        const osc = audioCtx.createOscillator();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(2000, now);
+        osc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
+        gain.gain.setValueAtTime(volume * 0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 0.15);
+    } else if (type === 'place') {
+        // Tower placement: metallic clunk
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(200, now + 0.08);
+        gain.gain.setValueAtTime(volume * 0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 0.08);
+    } else if (type === 'sell') {
+        // Sell: coin sound
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.setValueAtTime(1200, now + 0.05);
+        osc.frequency.setValueAtTime(1000, now + 0.1);
+        gain.gain.setValueAtTime(volume * 0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 0.15);
+    } else if (type === 'wave_start') {
+        // Wave start: alarm horn
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.setValueAtTime(400, now + 0.15);
+        osc.frequency.setValueAtTime(300, now + 0.3);
+        gain.gain.setValueAtTime(volume * 0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 0.4);
+    } else if (type === 'hit') {
+        // Hit/impact: short thud
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.05);
+        gain.gain.setValueAtTime(volume * 0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 0.05);
+    } else if (type === 'tower_destroy') {
+        // Tower destroyed: big crunch
+        const dur = 0.4;
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.1));
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 400;
+        gain.gain.setValueAtTime(volume * 0.7, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        src.connect(filter);
+        filter.connect(gain);
+        src.start(now);
+    } else if (type === 'airstrike') {
+        // Airstrike: jet flyover + explosion
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(100, now);
+        osc.frequency.linearRampToValueAtTime(300, now + 0.3);
+        osc.frequency.linearRampToValueAtTime(80, now + 0.6);
+        gain.gain.setValueAtTime(volume * 0.3, now);
+        gain.gain.linearRampToValueAtTime(volume * 0.5, now + 0.3);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 0.6);
+    } else if (type === 'game_over') {
+        // Game over: descending tone
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(500, now);
+        osc.frequency.exponentialRampToValueAtTime(80, now + 1.0);
+        gain.gain.setValueAtTime(volume * 0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 1.0);
+    }
+}
+
+// Throttle sounds to prevent audio overload
+const soundTimers = {};
+function playSoundThrottled(type, minInterval = 0.05, volume = 0.15) {
+    const now = performance.now() / 1000;
+    if (soundTimers[type] && now - soundTimers[type] < minInterval) return;
+    soundTimers[type] = now;
+    playSound(type, volume);
+}
+
+// ---- Constants ----
+const TILE_W = 64;
+const TILE_H = 32;
+const GRID_COLS = 16;
+const GRID_ROWS = 16;
+const SELL_REFUND = 0.5;
+const AUTO_WAVE_DELAY = 3; // seconds
+const BASE_MAX_HP = 100;
+
+// Commander Ability costs
+const ABILITY_COSTS = {
+    airstrike: 150,
+    landmine: 80,
+    supply: 200
+};
+
+// ---- Isometric Helpers ----
+function isoToScreen(col, row) {
+    const originX = canvas.width / 2;
+    const originY = 80;
+    return {
+        x: originX + (col - row) * (TILE_W / 2),
+        y: originY + (col + row) * (TILE_H / 2)
+    };
+}
+
+function screenToGrid(sx, sy) {
+    const originX = canvas.width / 2;
+    const originY = 80;
+    const mx = sx - originX;
+    const my = sy - originY;
+    const col = (mx / (TILE_W / 2) + my / (TILE_H / 2)) / 2;
+    const row = (my / (TILE_H / 2) - mx / (TILE_W / 2)) / 2;
+    return { col: Math.floor(col), row: Math.floor(row) };
+}
+
+function gridCenter(col, row) {
+    const p = isoToScreen(col, row);
+    return { x: p.x, y: p.y + TILE_H / 2 };
+}
+
+// ---- Path Definition (grid cells the enemy walks through) ----
+const PATH_CELLS = [
+    {c:0,r:7},{c:1,r:7},{c:2,r:7},{c:3,r:7},{c:4,r:7},
+    {c:4,r:6},{c:4,r:5},{c:4,r:4},{c:4,r:3},
+    {c:5,r:3},{c:6,r:3},{c:7,r:3},{c:8,r:3},
+    {c:8,r:4},{c:8,r:5},{c:8,r:6},{c:8,r:7},{c:8,r:8},{c:8,r:9},
+    {c:9,r:9},{c:10,r:9},{c:11,r:9},{c:12,r:9},
+    {c:12,r:8},{c:12,r:7},{c:12,r:6},{c:12,r:5},
+    {c:13,r:5},{c:14,r:5},{c:15,r:5}
+];
+
+// Build path set for quick lookup
+const pathSet = new Set(PATH_CELLS.map(p => `${p.c},${p.r}`));
+
+// Screen-space path waypoints (calculated after canvas resize)
+let pathWaypoints = [];       // Original path (always available)
+let shortcutWaypoints = null; // BFS shortcut path (set when blasts exist)
+
+function recalcPathWaypoints() {
+    pathWaypoints = PATH_CELLS.map(p => gridCenter(p.c, p.r));
+    // Recalc shortcut if blasts exist
+    if (gameState && gameState.blastTiles && gameState.blastTiles.length > 0) {
+        rebuildShortcutPath();
+    } else {
+        shortcutWaypoints = null;
+    }
+}
+
+// Count towers near a path (within range of path waypoints)
+function countTowersAlongPath(waypoints) {
+    let count = 0;
+    for (const tower of gameState.towers) {
+        const tp = gridCenter(tower.col, tower.row);
+        const range = getEffectiveRange(tower);
+        for (const wp of waypoints) {
+            if (Math.hypot(tp.x - wp.x, tp.y - wp.y) <= range) {
+                count++;
+                break; // count each tower once
+            }
+        }
+    }
+    return count;
+}
+
+// Get a path for a newly spawned enemy (prefers path with fewer towers)
+function getEnemyPath() {
+    if (!shortcutWaypoints) return pathWaypoints;
+
+    const towersOnOriginal = countTowersAlongPath(pathWaypoints);
+    const towersOnShortcut = countTowersAlongPath(shortcutWaypoints);
+
+    // Strongly prefer path with fewer towers, but add some randomness
+    if (towersOnOriginal < towersOnShortcut) {
+        return Math.random() < 0.8 ? pathWaypoints : shortcutWaypoints;
+    } else if (towersOnShortcut < towersOnOriginal) {
+        return Math.random() < 0.8 ? shortcutWaypoints : pathWaypoints;
+    }
+    // Equal towers - random
+    return Math.random() < 0.5 ? pathWaypoints : shortcutWaypoints;
+}
+
+// ---- Tower Definitions ----
+// unlockHP: total HP destroyed globally before this tower becomes available
+// towerHP: how much damage a tower can take from enemy fire before being destroyed
+const TOWER_DEFS = {
+    machinegun: {
+        name: 'Machine Gun', cost: 250, damage: 6, fireRate: 0.15, range: 90,
+        color: '#7cb342', projectileColor: '#ffeb3b', projectileSpeed: 600,
+        splash: 0, slow: 0, stun: 0, dot: 0, description: 'Rapid fire, low damage',
+        unlockHP: 0, towerHP: 150
+    },
+    slowdown: {
+        name: 'Slowdown', cost: 750, damage: 0, fireRate: 0, range: 110,
+        color: '#ab47bc', projectileColor: '#9c27b0', projectileSpeed: 0,
+        splash: 0, slow: 0.5, stun: 0, dot: 0, description: 'Slows enemies, no damage',
+        unlockHP: 0, towerHP: 120
+    },
+    sniper: {
+        name: 'Sniper', cost: 2000, damage: 80, fireRate: 1.5, range: 200,
+        color: '#5c6bc0', projectileColor: '#e0e0e0', projectileSpeed: 900,
+        splash: 0, slow: 0, stun: 0, dot: 0, description: 'High damage, slow fire',
+        unlockHP: 3000, towerHP: 100  // Sniper: 3K
+    },
+    flamethrower: {
+        name: 'Flamethrower', cost: 5000, damage: 15, fireRate: 0.15, range: 80,
+        color: '#ff9800', projectileColor: '#ff6f00', projectileSpeed: 0,
+        splash: 0, slow: 0, stun: 0, dot: 5, description: 'Continuous cone, DOT',
+        unlockHP: 16000, towerHP: 130
+    },
+    missile: {
+        name: 'Missile Launcher', cost: 25000, damage: 40, fireRate: 1.0, range: 160,
+        color: '#ef5350', projectileColor: '#ff5722', projectileSpeed: 400,
+        splash: 50, slow: 0, stun: 0, dot: 0, description: 'Area splash damage',
+        unlockHP: 50000, towerHP: 140
+    },
+    emp: {
+        name: 'EMP', cost: 100000, damage: 20, fireRate: 0.8, range: 130,
+        color: '#29b6f6', projectileColor: '#03a9f4', projectileSpeed: 500,
+        splash: 0, slow: 0, stun: 2.0, dot: 0, description: 'Stuns vehicles & bosses',
+        unlockHP: 100000, towerHP: 110
+    },
+    artillery: {
+        name: 'Artillery', cost: 200000, damage: 120, fireRate: 2.5, range: 180,
+        color: '#8d6e63', projectileColor: '#795548', projectileSpeed: 300,
+        splash: 60, slow: 0, stun: 0, dot: 0, description: 'Heavy area damage',
+        unlockHP: 200000, towerHP: 160
+    }
+};
+
+// ---- Rank System ----
+const RANKS = [
+    { name: 'Private',  hpReq: 0,     dmgMult: 1.0, rateMult: 1.0, rangeMult: 1.0 },
+    { name: 'Corporal', hpReq: 500,   dmgMult: 1.5, rateMult: 1.5, rangeMult: 1.5 },
+    { name: 'Sergeant', hpReq: 2000,  dmgMult: 2.0, rateMult: 2.0, rangeMult: 2.0 },
+    { name: 'Captain',  hpReq: 8000,  dmgMult: 4.0, rateMult: 4.0, rangeMult: 4.0 },
+    { name: 'General',  hpReq: 25000, dmgMult: 8.0, rateMult: 8.0, rangeMult: 8.0 }
+];
+
+// ---- Division System ----
+const DIVISIONS = [
+    { name: 'Army',          cost: 0,    dmgMult: 1.0,  rateMult: 1.0,  rangeMult: 1.0 },
+    { name: 'Marine',        cost: 500,  dmgMult: 2.5,  rateMult: 2.0,  rangeMult: 1.5 },
+    { name: 'Special Forces', cost: 1500, dmgMult: 6.0,  rateMult: 5.0,  rangeMult: 4.0 },
+    { name: 'Delta Force',   cost: 4000, dmgMult: 11.0, rateMult: 10.0, rangeMult: 9.0 }
+];
+
+// ---- Enemy Definitions ----
+// canShoot: whether this enemy fires at towers
+// shootRange/shootDamage/shootRate: shooting stats
+// isArtillery: can blast open new paths
+const ENEMY_DEFS = {
+    infantry: { name: 'Infantry', baseHP: 60, speed: 30, baseDmg: 12, rankXP: 1, color: '#a5d6a7', size: 6,
+                canShoot: true, shootRange: 70, shootDamage: 5, shootRate: 1.5 },
+    jeep:     { name: 'Jeep',     baseHP: 1500, speed: 50, baseDmg: 30, rankXP: 3, color: '#fff176', size: 8,
+                canShoot: true, shootRange: 90, shootDamage: 12, shootRate: 1.2 },
+    tank:     { name: 'Tank',     baseHP: 5000, speed: 18, baseDmg: 100, rankXP: 10, color: '#ef9a9a', size: 12,
+                canShoot: true, shootRange: 110, shootDamage: 30, shootRate: 2.0 },
+    enemyArt: { name: 'Enemy Artillery', baseHP: 3000, speed: 14, baseDmg: 60, rankXP: 8, color: '#ff6e40', size: 14,
+                canShoot: true, shootRange: 130, shootDamage: 20, shootRate: 2.5, isArtillery: true }
+};
+
+// ---- Fusion Tower Bonuses ----
+const FUSION_BONUSES = {
+    machinegun:   { name: 'Twin Machine Gun',  dmgMult: 2.2, rateMult: 1.3, rangeMult: 1.15, ability: 'Bullet Storm: 3s of 4x fire rate' },
+    sniper:       { name: 'Twin Sniper',       dmgMult: 2.5, rateMult: 1.2, rangeMult: 1.3,  ability: 'Headshot: Instant kill <20% HP enemies in range' },
+    missile:      { name: 'Twin Missile',       dmgMult: 2.0, rateMult: 1.4, rangeMult: 1.2,  ability: 'Barrage: Fire 8 missiles in all directions' },
+    flamethrower: { name: 'Twin Flamethrower', dmgMult: 2.3, rateMult: 1.2, rangeMult: 1.4,  ability: 'Inferno: 360° flame ring for 3s' },
+    artillery:    { name: 'Twin Artillery',     dmgMult: 2.4, rateMult: 1.1, rangeMult: 1.3,  ability: 'Carpet Bomb: 5 explosions along path' },
+    emp:          { name: 'Twin EMP',           dmgMult: 2.0, rateMult: 1.3, rangeMult: 1.25, ability: 'EMP Pulse: Stun ALL enemies for 4s' },
+    slowdown:     { name: 'Twin Slowdown',     dmgMult: 1.0, rateMult: 1.0, rangeMult: 1.5,  ability: 'Freeze: Stop all enemies in range for 3s' }
+};
+
+// ---- Game State ----
+let gameState = {
+    running: false,
+    money: 2500,
+    baseHP: BASE_MAX_HP,
+    baseMaxHP: BASE_MAX_HP,
+    wave: 0,
+    waveActive: false,
+    enemies: [],
+    towers: [],
+    projectiles: [],
+    particles: [],
+    selectedTowerType: null,
+    selectedTower: null,
+    hoverGrid: null,
+    autoWaveTimer: 0,
+    totalKills: 0,
+    enemiesToSpawn: [],
+    spawnTimer: 0,
+    spawnInterval: 0.5,
+    lastTime: 0,
+    grid: [], // 2D array: 0=empty, 1=path, 2=tower
+    // Commander abilities
+    commandPoints: 0,
+    selectedAbility: null,
+    landmines: [],
+    airstrikeEffects: [],
+    // Surrender/POW system
+    allies: [],
+    totalPOWs: 0,
+    // Fusion
+    fusionEffects: [],
+    // Tower unlock tracking
+    totalHPDestroyed: 0,
+    // Enemy shooting
+    enemyProjectiles: [],
+    // Enemy artillery - blasted tiles (new paths)
+    blastTiles: [], // {col, row} tiles blasted open by enemy artillery
+    destroyedTiles: new Set() // tiles where towers were destroyed (unbuildable)
+};
+
+function initGrid() {
+    gameState.grid = [];
+    for (let c = 0; c < GRID_COLS; c++) {
+        gameState.grid[c] = [];
+        for (let r = 0; r < GRID_ROWS; r++) {
+            gameState.grid[c][r] = pathSet.has(`${c},${r}`) ? 1 : 0;
+        }
+    }
+}
+
+// ---- Canvas Resize ----
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    recalcPathWaypoints();
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ============================================================
+// RENDERING
+// ============================================================
+
+function drawIsoDiamond(cx, cy, w, h, fillColor, strokeColor) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h / 2);
+    ctx.lineTo(cx + w / 2, cy);
+    ctx.lineTo(cx, cy + h / 2);
+    ctx.lineTo(cx - w / 2, cy);
+    ctx.closePath();
+    if (fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+    if (strokeColor) { ctx.strokeStyle = strokeColor; ctx.lineWidth = 1; ctx.stroke(); }
+}
+
+// Enhanced iso diamond with gradient
+function drawIsoGradientDiamond(cx, cy, w, h, color1, color2, strokeColor) {
+    const grad = ctx.createLinearGradient(cx - w/2, cy, cx + w/2, cy);
+    grad.addColorStop(0, color1);
+    grad.addColorStop(1, color2);
+    drawIsoDiamond(cx, cy, w, h, null, null);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    if (strokeColor) { ctx.strokeStyle = strokeColor; ctx.lineWidth = 1; ctx.stroke(); }
+}
+
+function drawMap() {
+    const time = Date.now() * 0.001;
+    for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+            const p = isoToScreen(c, r);
+            const cx = p.x;
+            const cy = p.y + TILE_H / 2;
+            const isPath = pathSet.has(`${c},${r}`);
+            const hasTower = gameState.grid[c] && gameState.grid[c][r] === 2;
+            const isBlasted = gameState.blastTiles && gameState.blastTiles.some(b => b.col === c && b.row === r);
+            const isDestroyed = gameState.destroyedTiles && gameState.destroyedTiles.has(`${c},${r}`);
+            const hw = (TILE_W - 2) / 2;
+            const hh = (TILE_H - 2) / 2;
+
+            // --- DESTROYED TOWER CRATER ---
+            if (isDestroyed) {
+                // Scorched earth crater
+                ctx.beginPath();
+                ctx.moveTo(cx, cy - hh); ctx.lineTo(cx + hw, cy);
+                ctx.lineTo(cx, cy + hh); ctx.lineTo(cx - hw, cy); ctx.closePath();
+                ctx.fillStyle = '#2a1a0a';
+                ctx.fill();
+                ctx.strokeStyle = '#1a0a00';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                // Scorch marks
+                const hash = (c * 11 + r * 7) % 5;
+                ctx.fillStyle = 'rgba(60,30,10,0.6)';
+                ctx.beginPath(); ctx.arc(cx + (hash - 2) * 4, cy + (hash - 3) * 2, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = 'rgba(40,20,5,0.4)';
+                ctx.beginPath(); ctx.arc(cx - (hash - 1) * 3, cy + hash * 2, 4, 0, Math.PI * 2); ctx.fill();
+                // Rubble pieces
+                ctx.fillStyle = '#555';
+                for (let rb = 0; rb < 3; rb++) {
+                    const rx = cx + ((c * 3 + rb * 7) % 9 - 4) * 2;
+                    const ry = cy + ((r * 5 + rb * 3) % 7 - 3);
+                    ctx.fillRect(rx, ry, 2, 2);
+                }
+                // X mark (unbuildable indicator)
+                ctx.strokeStyle = 'rgba(255,50,50,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(cx - 6, cy - 3); ctx.lineTo(cx + 6, cy + 3); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(cx + 6, cy - 3); ctx.lineTo(cx - 6, cy + 3); ctx.stroke();
+                continue;
+            }
+
+            // --- GRASS TILES ---
+            if (!isPath && !isBlasted) {
+                const hash = (c * 7 + r * 13) % 11;
+                // Multi-tone grass with noise pattern
+                const gBase = [36, 68 + hash * 2, 36];
+                const gLight = `rgb(${gBase[0]+10},${gBase[1]+15},${gBase[2]+5})`;
+                const gDark = `rgb(${gBase[0]-5},${gBase[1]-10},${gBase[2]-5})`;
+                // 3D depth on grass
+                ctx.fillStyle = `rgb(${gBase[0]-12},${gBase[1]-18},${gBase[2]-12})`;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy + hh); ctx.lineTo(cx + hw, cy); ctx.lineTo(cx + hw, cy + 2); ctx.lineTo(cx, cy + hh + 2);
+                ctx.closePath(); ctx.fill();
+                ctx.fillStyle = `rgb(${gBase[0]-16},${gBase[1]-22},${gBase[2]-16})`;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy + hh); ctx.lineTo(cx - hw, cy); ctx.lineTo(cx - hw, cy + 2); ctx.lineTo(cx, cy + hh + 2);
+                ctx.closePath(); ctx.fill();
+                // Main grass surface with gradient
+                drawIsoGradientDiamond(cx, cy, TILE_W - 2, TILE_H - 2, gLight, gDark, '#1a3a1a');
+
+                // Detailed grass features
+                if (!hasTower) {
+                    // Multiple grass blades
+                    if (hash % 3 === 0) {
+                        ctx.strokeStyle = `rgba(${50+hash*3},${100+hash*5},30,0.5)`;
+                        ctx.lineWidth = 0.8;
+                        for (let g = 0; g < 3; g++) {
+                            const gx = cx - 6 + g * 5 + (hash % 3);
+                            const gy = cy + 1;
+                            ctx.beginPath();
+                            ctx.moveTo(gx, gy);
+                            ctx.quadraticCurveTo(gx + Math.sin(time + c + g) * 1.5, gy - 4, gx + 1, gy - 5);
+                            ctx.stroke();
+                        }
+                    }
+                    // Small flowers / details
+                    if (hash === 3) {
+                        ctx.fillStyle = '#e8e050';
+                        ctx.beginPath(); ctx.arc(cx + 3, cy - 1, 1.2, 0, Math.PI * 2); ctx.fill();
+                    } else if (hash === 7) {
+                        ctx.fillStyle = '#d04040';
+                        ctx.beginPath(); ctx.arc(cx - 4, cy + 1, 1, 0, Math.PI * 2); ctx.fill();
+                    }
+                    // Small rocks
+                    if (hash === 5 || hash === 9) {
+                        ctx.fillStyle = '#4a5a4a';
+                        ctx.beginPath(); ctx.arc(cx + 6, cy, 1.5, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#3a4a3a';
+                        ctx.beginPath(); ctx.arc(cx + 5, cy + 1, 1, 0, Math.PI * 2); ctx.fill();
+                    }
+                }
+            }
+
+            // --- PATH / ROAD TILES ---
+            if (isPath && !isBlasted) {
+                const roadDepth = 4;
+                // 3D side faces with better colors
+                ctx.fillStyle = '#4a3e28';
+                ctx.beginPath();
+                ctx.moveTo(cx, cy + hh); ctx.lineTo(cx + hw, cy); ctx.lineTo(cx + hw, cy + roadDepth); ctx.lineTo(cx, cy + hh + roadDepth);
+                ctx.closePath(); ctx.fill();
+                ctx.fillStyle = '#3e3420';
+                ctx.beginPath();
+                ctx.moveTo(cx, cy + hh); ctx.lineTo(cx - hw, cy); ctx.lineTo(cx - hw, cy + roadDepth); ctx.lineTo(cx, cy + hh + roadDepth);
+                ctx.closePath(); ctx.fill();
+
+                // Road surface with gradient
+                const rv = ((c * 3 + r * 5) % 4);
+                const roadColors = [['#7a6e4e','#6b6040'],['#706444','#63593c'],['#75694a','#685e3e'],['#6e6342','#5e5538']];
+                drawIsoGradientDiamond(cx, cy, TILE_W - 2, TILE_H - 2, roadColors[rv][0], roadColors[rv][1], '#4a4228');
+
+                // Road markings - tire tracks
+                const hasRight = pathSet.has(`${c+1},${r}`);
+                const hasDown = pathSet.has(`${c},${r+1}`);
+                const hasLeft = pathSet.has(`${c-1},${r}`);
+                const hasUp = pathSet.has(`${c},${r-1}`);
+                ctx.strokeStyle = 'rgba(90,80,55,0.5)';
+                ctx.lineWidth = 1.5;
+                if (hasRight) {
+                    ctx.beginPath(); ctx.moveTo(cx - 2, cy - 1); ctx.lineTo(cx + hw * 0.7, cy - hh * 0.5); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(cx + 2, cy + 1); ctx.lineTo(cx + hw * 0.7, cy + hh * 0.15); ctx.stroke();
+                }
+                if (hasDown) {
+                    ctx.beginPath(); ctx.moveTo(cx - 2, cy - 1); ctx.lineTo(cx - hw * 0.7, cy + hh * 0.15); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(cx + 2, cy + 1); ctx.lineTo(cx - hw * 0.7, cy + hh * 0.6); ctx.stroke();
+                }
+                if (hasLeft) {
+                    ctx.beginPath(); ctx.moveTo(cx - 2, cy - 1); ctx.lineTo(cx - hw * 0.7, cy - hh * 0.5); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(cx + 2, cy + 1); ctx.lineTo(cx - hw * 0.7, cy + hh * 0.15); ctx.stroke();
+                }
+                if (hasUp) {
+                    ctx.beginPath(); ctx.moveTo(cx - 2, cy - 1); ctx.lineTo(cx + hw * 0.7, cy + hh * 0.15); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(cx + 2, cy + 1); ctx.lineTo(cx + hw * 0.7, cy + hh * 0.6); ctx.stroke();
+                }
+
+                // Gravel / pebbles detail
+                const pebHash = (c * 11 + r * 17) % 9;
+                if (pebHash < 3) {
+                    ctx.fillStyle = 'rgba(110,100,70,0.6)';
+                    ctx.beginPath(); ctx.arc(cx + 5 - pebHash * 3, cy - 1 + pebHash, 1.3, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = 'rgba(90,80,55,0.5)';
+                    ctx.beginPath(); ctx.arc(cx - 4 + pebHash * 2, cy + 1, 1, 0, Math.PI * 2); ctx.fill();
+                }
+                // Dirt patches
+                if (pebHash === 4) {
+                    ctx.fillStyle = 'rgba(80,70,45,0.3)';
+                    ctx.beginPath(); ctx.ellipse(cx, cy, 6, 3, 0.3, 0, Math.PI * 2); ctx.fill();
+                }
+            }
+
+            // --- BLASTED ROAD TILES ---
+            if (isBlasted) {
+                // Crater depth
+                ctx.fillStyle = '#3a2218';
+                ctx.beginPath();
+                ctx.moveTo(cx, cy + hh); ctx.lineTo(cx + hw, cy); ctx.lineTo(cx + hw, cy + 3); ctx.lineTo(cx, cy + hh + 3);
+                ctx.closePath(); ctx.fill();
+                ctx.fillStyle = '#2e1a10';
+                ctx.beginPath();
+                ctx.moveTo(cx, cy + hh); ctx.lineTo(cx - hw, cy); ctx.lineTo(cx - hw, cy + 3); ctx.lineTo(cx, cy + hh + 3);
+                ctx.closePath(); ctx.fill();
+                // Crater surface
+                drawIsoGradientDiamond(cx, cy, TILE_W - 2, TILE_H - 2, '#5a3a28', '#3e2818', '#6b2020');
+                // Inner crater depression
+                drawIsoDiamond(cx, cy, TILE_W * 0.5, TILE_H * 0.5, '#2e1a0e', null);
+                // Scorch marks
+                ctx.strokeStyle = 'rgba(120,50,20,0.5)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(cx - 10, cy - 2); ctx.lineTo(cx + 8, cy + 3); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(cx + 4, cy - 5); ctx.lineTo(cx - 5, cy + 4); ctx.stroke();
+                // Rubble chunks
+                ctx.fillStyle = '#6a4a3a';
+                ctx.beginPath(); ctx.arc(cx - 6, cy - 1, 2.5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#5a3a2a';
+                ctx.beginPath(); ctx.arc(cx + 7, cy + 1, 2, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#4a2a1a';
+                ctx.beginPath(); ctx.arc(cx + 2, cy + 3, 1.5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#3a2218';
+                ctx.beginPath(); ctx.arc(cx - 3, cy + 2, 1, 0, Math.PI * 2); ctx.fill();
+                // Smoke wisps (animated)
+                const smokeAlpha = 0.15 + Math.sin(time * 2 + c * 3) * 0.05;
+                ctx.fillStyle = `rgba(80,60,40,${smokeAlpha})`;
+                ctx.beginPath(); ctx.arc(cx + Math.sin(time + c) * 3, cy - 4 - Math.sin(time * 1.5) * 2, 3, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+    }
+
+    // Draw landmines on path
+    for (const mine of gameState.landmines) {
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath(); ctx.ellipse(mine.x, mine.y + 2, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
+        // Mine casing
+        const mGrad = ctx.createRadialGradient(mine.x - 1, mine.y - 1, 1, mine.x, mine.y, 6);
+        mGrad.addColorStop(0, '#777');
+        mGrad.addColorStop(1, '#3a3a3a');
+        ctx.fillStyle = mGrad;
+        ctx.beginPath(); ctx.arc(mine.x, mine.y, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 1; ctx.stroke();
+        // Pressure plate
+        ctx.fillStyle = '#888';
+        ctx.beginPath(); ctx.arc(mine.x, mine.y, 3.5, 0, Math.PI * 2); ctx.fill();
+        // Screws
+        ctx.fillStyle = '#555';
+        ctx.beginPath(); ctx.arc(mine.x - 2, mine.y, 0.8, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(mine.x + 2, mine.y, 0.8, 0, Math.PI * 2); ctx.fill();
+        // Blinking warning
+        if (Math.floor(Date.now() / 250) % 2 === 0) {
+            ctx.fillStyle = '#ff2200';
+            ctx.beginPath(); ctx.arc(mine.x, mine.y, 1.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(255,30,0,0.3)';
+            ctx.beginPath(); ctx.arc(mine.x, mine.y, 4, 0, Math.PI * 2); ctx.fill();
+        }
+    }
+
+    // === BASE (end of path) - Enhanced military compound ===
+    const basePt = PATH_CELLS[PATH_CELLS.length - 1];
+    const bp = gridCenter(basePt.c, basePt.r);
+    const baseW = TILE_W * 0.85;
+    const baseH = TILE_H * 0.85;
+    const bHeight = 14;
+    // Foundation
+    ctx.fillStyle = '#333';
+    drawIsoDiamond(bp.x, bp.y + 2, baseW + 6, baseH + 3, '#333', '#222');
+    // Right wall
+    ctx.fillStyle = '#b02020';
+    ctx.beginPath();
+    ctx.moveTo(bp.x, bp.y + baseH/2); ctx.lineTo(bp.x + baseW/2, bp.y);
+    ctx.lineTo(bp.x + baseW/2, bp.y - bHeight); ctx.lineTo(bp.x, bp.y + baseH/2 - bHeight);
+    ctx.closePath(); ctx.fill();
+    // Left wall
+    ctx.fillStyle = '#8a1818';
+    ctx.beginPath();
+    ctx.moveTo(bp.x, bp.y + baseH/2); ctx.lineTo(bp.x - baseW/2, bp.y);
+    ctx.lineTo(bp.x - baseW/2, bp.y - bHeight); ctx.lineTo(bp.x, bp.y + baseH/2 - bHeight);
+    ctx.closePath(); ctx.fill();
+    // Window slits
+    ctx.fillStyle = '#660808';
+    ctx.fillRect(bp.x + 4, bp.y - bHeight + 3, 6, 3);
+    ctx.fillRect(bp.x - 10, bp.y - bHeight + 5, 5, 2);
+    // Roof with gradient
+    drawIsoGradientDiamond(bp.x, bp.y - bHeight, baseW, baseH, '#dd3333', '#aa2222', '#881111');
+    // Roof detail lines
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(bp.x, bp.y - bHeight - baseH/2); ctx.lineTo(bp.x, bp.y - bHeight + baseH/2); ctx.stroke();
+    // Flag pole
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(bp.x, bp.y - bHeight); ctx.lineTo(bp.x, bp.y - bHeight - 18); ctx.stroke();
+    // Flag (waving)
+    const flagWave = Math.sin(time * 3) * 2;
+    ctx.fillStyle = '#ff3333';
+    ctx.beginPath();
+    ctx.moveTo(bp.x, bp.y - bHeight - 18);
+    ctx.quadraticCurveTo(bp.x + 5, bp.y - bHeight - 16 + flagWave, bp.x + 10, bp.y - bHeight - 15);
+    ctx.lineTo(bp.x, bp.y - bHeight - 12);
+    ctx.closePath(); ctx.fill();
+    // Star on flag
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('★', bp.x + 4, bp.y - bHeight - 14);
+    // BASE label with shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillText('BASE', bp.x + 1, bp.y - 1);
+    ctx.fillStyle = '#fff';
+    ctx.fillText('BASE', bp.x, bp.y - 2);
+    // Sandbag ring
+    ctx.fillStyle = '#6d5e3a';
+    ctx.strokeStyle = '#4a3f28';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const sx = bp.x + Math.cos(a) * (baseW/2 + 4);
+        const sy = bp.y + Math.sin(a) * (baseH/2 + 2);
+        ctx.beginPath(); ctx.ellipse(sx, sy, 3, 2, a, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+
+    // === SPAWN (start of path) - Enhanced military gate ===
+    const spawnPt = PATH_CELLS[0];
+    const sp = gridCenter(spawnPt.c, spawnPt.r);
+    // Spawn pad with depth
+    const spDepth = 5;
+    ctx.fillStyle = '#2d8a2d';
+    ctx.beginPath();
+    ctx.moveTo(sp.x, sp.y + TILE_H/2); ctx.lineTo(sp.x + TILE_W/2, sp.y);
+    ctx.lineTo(sp.x + TILE_W/2, sp.y + spDepth); ctx.lineTo(sp.x, sp.y + TILE_H/2 + spDepth);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#1e6e1e';
+    ctx.beginPath();
+    ctx.moveTo(sp.x, sp.y + TILE_H/2); ctx.lineTo(sp.x - TILE_W/2, sp.y);
+    ctx.lineTo(sp.x - TILE_W/2, sp.y + spDepth); ctx.lineTo(sp.x, sp.y + TILE_H/2 + spDepth);
+    ctx.closePath(); ctx.fill();
+    // Spawn surface with gradient
+    drawIsoGradientDiamond(sp.x, sp.y, TILE_W, TILE_H, '#5cbf5c', '#388e3c', '#2a6e2a');
+    // Chevron arrows (animated)
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    const arrowBounce = Math.sin(time * 4) * 1.5;
+    ctx.globalAlpha = 0.7 + Math.sin(time * 3) * 0.3;
+    ctx.fillText('▶', sp.x + 4 + arrowBounce, sp.y + 1);
+    ctx.globalAlpha = 0.5 + Math.sin(time * 3 + 1) * 0.3;
+    ctx.fillText('▶', sp.x - 4 + arrowBounce, sp.y + 1);
+    ctx.globalAlpha = 1;
+    // SPAWN label
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.font = 'bold 8px sans-serif';
+    ctx.fillText('SPAWN', sp.x + 1, sp.y - 7);
+    ctx.fillStyle = '#e0ffe0';
+    ctx.fillText('SPAWN', sp.x, sp.y - 8);
+    // Gate posts
+    ctx.fillStyle = '#555';
+    ctx.fillRect(sp.x - TILE_W/2 + 2, sp.y - 12, 3, 14);
+    ctx.fillRect(sp.x + TILE_W/2 - 5, sp.y - 12, 3, 14);
+    ctx.fillStyle = '#4caf50';
+    ctx.beginPath(); ctx.arc(sp.x - TILE_W/2 + 3.5, sp.y - 13, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(sp.x + TILE_W/2 - 3.5, sp.y - 13, 2.5, 0, Math.PI * 2); ctx.fill();
+
+    // Draw path direction arrows (original path)
+    ctx.strokeStyle = 'rgba(255,255,200,0.1)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < pathWaypoints.length - 1; i++) {
+        const a = pathWaypoints[i];
+        const b = pathWaypoints[i + 1];
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+
+    // Draw shortcut path arrows (red tint) if it exists
+    if (shortcutWaypoints) {
+        ctx.strokeStyle = 'rgba(255,100,100,0.2)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        for (let i = 0; i < shortcutWaypoints.length - 1; i++) {
+            const a = shortcutWaypoints[i];
+            const b = shortcutWaypoints[i + 1];
+            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+        ctx.setLineDash([]);
+    }
+}
+
+function drawHoverPreview() {
+    if (!gameState.hoverGrid) return;
+    const { col, row } = gameState.hoverGrid;
+    if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return;
+
+    // Ability targeting preview
+    if (gameState.selectedAbility) {
+        const p = gridCenter(col, row);
+        if (gameState.selectedAbility === 'airstrike') {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 80, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,50,50,0.15)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,50,50,0.6)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 3]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            // Crosshair
+            ctx.strokeStyle = 'rgba(255,50,50,0.8)';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(p.x - 15, p.y); ctx.lineTo(p.x + 15, p.y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(p.x, p.y - 15); ctx.lineTo(p.x, p.y + 15); ctx.stroke();
+        } else if (gameState.selectedAbility === 'landmine') {
+            const isOnPath = pathSet.has(`${col},${row}`);
+            drawIsoDiamond(p.x, p.y, TILE_W - 2, TILE_H - 2,
+                isOnPath ? 'rgba(255,100,50,0.4)' : 'rgba(255,50,50,0.2)', null);
+        }
+        return;
+    }
+
+    if (!gameState.selectedTowerType) return;
+
+    const canPlace = gameState.grid[col] && gameState.grid[col][row] === 0;
+    const p = gridCenter(col, row);
+    const def = TOWER_DEFS[gameState.selectedTowerType];
+
+    // Range circle
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, def.range, 0, Math.PI * 2);
+    ctx.fillStyle = canPlace ? 'rgba(76,175,80,0.1)' : 'rgba(244,67,54,0.1)';
+    ctx.fill();
+    ctx.strokeStyle = canPlace ? 'rgba(76,175,80,0.3)' : 'rgba(244,67,54,0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Tile highlight
+    drawIsoDiamond(p.x, p.y, TILE_W - 2, TILE_H - 2,
+        canPlace ? 'rgba(76,175,80,0.4)' : 'rgba(244,67,54,0.4)', null);
+}
+
+function drawTowers() {
+    for (const tower of gameState.towers) {
+        const p = gridCenter(tower.col, tower.row);
+        const def = TOWER_DEFS[tower.type];
+        const rank = getRank(tower);
+        const isGeneral = rank.name === 'General';
+        const rankIdx = RANKS.indexOf(rank);
+        const bodyH = tower.fused ? 24 : (isGeneral ? 20 : 16);
+        const bodyW = tower.fused ? 18 : 14;
+
+        // Selected tower range indicator
+        if (gameState.selectedTower === tower) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, getEffectiveRange(tower), 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,215,0,0.08)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,215,0,0.3)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        // Slowdown tower aura
+        if (tower.type === 'slowdown') {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, getEffectiveRange(tower), 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(171,71,188,0.08)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(171,71,188,0.2)';
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Fused tower glow
+        if (tower.fused) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 22, 0, Math.PI * 2);
+            const glowGrad = ctx.createRadialGradient(p.x, p.y, 4, p.x, p.y, 22);
+            glowGrad.addColorStop(0, 'rgba(255,215,0,0.4)');
+            glowGrad.addColorStop(1, 'rgba(255,215,0,0)');
+            ctx.fillStyle = glowGrad;
+            ctx.fill();
+        }
+
+        // Repairing visual - wrench icon + progress bar + dimmed tower
+        if (tower.repairing) {
+            // Dim the tower with a translucent overlay
+            ctx.globalAlpha = 0.45;
+        }
+
+        // === TOWER BASE (isometric platform) ===
+        const baseScale = tower.fused ? 0.75 : 0.6;
+        const bw = TILE_W * baseScale / 2;
+        const bh = TILE_H * baseScale / 2;
+        const baseDepth = 5;
+        // Shadow under base
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y + bh + 3, bw * 1.1, bh * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Right face
+        ctx.fillStyle = tower.fused ? '#b8960a' : darkenColor(def.color, 0.55);
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y + bh); ctx.lineTo(p.x + bw, p.y);
+        ctx.lineTo(p.x + bw, p.y + baseDepth); ctx.lineTo(p.x, p.y + bh + baseDepth);
+        ctx.closePath(); ctx.fill();
+        // Left face
+        ctx.fillStyle = tower.fused ? '#9a7d08' : darkenColor(def.color, 0.4);
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y + bh); ctx.lineTo(p.x - bw, p.y);
+        ctx.lineTo(p.x - bw, p.y + baseDepth); ctx.lineTo(p.x, p.y + bh + baseDepth);
+        ctx.closePath(); ctx.fill();
+        // Top face with gradient
+        if (tower.fused) {
+            drawIsoGradientDiamond(p.x, p.y, TILE_W * baseScale, TILE_H * baseScale, '#ffe44d', '#ccaa00', '#000');
+        } else {
+            const topLight = def.color;
+            const topDark = darkenColor(def.color, 0.75);
+            drawIsoGradientDiamond(p.x, p.y, TILE_W * baseScale, TILE_H * baseScale, topLight, topDark, '#000');
+        }
+        // Base edge highlight
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(p.x - bw, p.y); ctx.lineTo(p.x, p.y - bh);
+        ctx.lineTo(p.x + bw, p.y);
+        ctx.stroke();
+
+        // === TOWER BODY (unique per type) ===
+        ctx.save();
+        const tTime = Date.now() * 0.001;
+        if (tower.type === 'machinegun') {
+            // Sandbag bunker with mounted gun
+            // Sandbag wall layers
+            for (let row = 0; row < 3; row++) {
+                const sy = p.y - bodyH + 5 + row * 5;
+                const sw = bodyW + 4 - row * 1;
+                ctx.fillStyle = row === 0 ? '#7a6b44' : row === 1 ? '#6d5e3a' : '#605230';
+                roundRect(p.x - sw/2, sy, sw, 5, 2);
+                ctx.fill();
+                ctx.strokeStyle = '#4a3f28';
+                ctx.lineWidth = 0.5;
+                roundRect(p.x - sw/2, sy, sw, 5, 2);
+                ctx.stroke();
+                // Sandbag seams
+                ctx.strokeStyle = '#5a4e33';
+                ctx.beginPath();
+                ctx.moveTo(p.x - sw/4, sy); ctx.lineTo(p.x - sw/4, sy + 5);
+                ctx.moveTo(p.x + sw/4, sy); ctx.lineTo(p.x + sw/4, sy + 5);
+                ctx.stroke();
+            }
+            // Gun mount
+            ctx.fillStyle = '#666';
+            ctx.fillRect(p.x - 3, p.y - bodyH - 2, 6, 8);
+            // Ammo box
+            ctx.fillStyle = '#5a5a3a';
+            ctx.fillRect(p.x - 7, p.y - 4, 5, 4);
+            ctx.strokeStyle = '#3a3a2a';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(p.x - 7, p.y - 4, 5, 4);
+        } else if (tower.type === 'sniper') {
+            // Tall watch tower with camouflage
+            // Cross-braced legs
+            ctx.strokeStyle = '#4a4a6a';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.moveTo(p.x - 7, p.y + 1); ctx.lineTo(p.x - 3, p.y - bodyH + 3); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(p.x + 7, p.y + 1); ctx.lineTo(p.x + 3, p.y - bodyH + 3); ctx.stroke();
+            // Cross brace
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(p.x - 5, p.y - bodyH/2 + 2); ctx.lineTo(p.x + 5, p.y - bodyH/2 + 2); ctx.stroke();
+            // Platform with gradient
+            const platGrad = ctx.createLinearGradient(p.x - 8, 0, p.x + 8, 0);
+            platGrad.addColorStop(0, '#5a5a80');
+            platGrad.addColorStop(1, '#3a3a60');
+            ctx.fillStyle = platGrad;
+            roundRect(p.x - 8, p.y - bodyH - 1, 16, 7, 2);
+            ctx.fill();
+            ctx.strokeStyle = '#2a2a4a';
+            ctx.lineWidth = 1;
+            roundRect(p.x - 8, p.y - bodyH - 1, 16, 7, 2);
+            ctx.stroke();
+            // Scope with lens flare
+            ctx.fillStyle = '#6688cc';
+            ctx.beginPath(); ctx.arc(p.x + 6, p.y - bodyH + 2, 2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#aaccff';
+            ctx.beginPath(); ctx.arc(p.x + 5.5, p.y - bodyH + 1.5, 0.8, 0, Math.PI * 2); ctx.fill();
+            // Camo netting
+            ctx.strokeStyle = 'rgba(80,100,60,0.4)';
+            ctx.lineWidth = 0.5;
+            ctx.setLineDash([2,2]);
+            ctx.beginPath(); ctx.moveTo(p.x - 8, p.y - bodyH); ctx.lineTo(p.x - 5, p.y - bodyH + 6); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(p.x + 8, p.y - bodyH); ctx.lineTo(p.x + 5, p.y - bodyH + 6); ctx.stroke();
+            ctx.setLineDash([]);
+        } else if (tower.type === 'missile') {
+            // Missile launcher rack with detail
+            // Launcher body
+            const mlGrad = ctx.createLinearGradient(p.x, p.y - bodyH, p.x, p.y);
+            mlGrad.addColorStop(0, '#6a3535');
+            mlGrad.addColorStop(1, '#4a2525');
+            ctx.fillStyle = mlGrad;
+            roundRect(p.x - bodyW/2 - 1, p.y - bodyH + 1, bodyW + 2, bodyH - 1, 3);
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            roundRect(p.x - bodyW/2 - 1, p.y - bodyH + 1, bodyW + 2, bodyH - 1, 3);
+            ctx.stroke();
+            // Missile tubes (4 in a 2x2 grid)
+            for (let mx = -1; mx <= 1; mx += 2) {
+                for (let my = 0; my <= 1; my++) {
+                    const tx = p.x + mx * 3.5;
+                    const ty = p.y - bodyH + my * 5;
+                    // Tube outer
+                    ctx.fillStyle = '#c0392b';
+                    ctx.beginPath(); ctx.arc(tx, ty, 3, 0, Math.PI * 2); ctx.fill();
+                    // Tube gradient
+                    const tGrad = ctx.createRadialGradient(tx - 0.5, ty - 0.5, 0.5, tx, ty, 3);
+                    tGrad.addColorStop(0, '#e55');
+                    tGrad.addColorStop(1, '#922');
+                    ctx.fillStyle = tGrad; ctx.fill();
+                    // Missile nose
+                    ctx.fillStyle = '#ddd';
+                    ctx.beginPath(); ctx.arc(tx, ty, 1.5, 0, Math.PI * 2); ctx.fill();
+                }
+            }
+            // Warning stripe
+            ctx.fillStyle = '#ff0';
+            ctx.fillRect(p.x - bodyW/2, p.y - 3, bodyW, 1.5);
+        } else if (tower.type === 'flamethrower') {
+            // Fuel tank with hazard markings
+            // Main tank (cylindrical look)
+            const ftGrad = ctx.createLinearGradient(p.x - bodyW/2, 0, p.x + bodyW/2, 0);
+            ftGrad.addColorStop(0, '#aa5500');
+            ftGrad.addColorStop(0.4, '#dd8800');
+            ftGrad.addColorStop(1, '#aa5500');
+            ctx.fillStyle = ftGrad;
+            roundRect(p.x - bodyW/2, p.y - bodyH + 2, bodyW, bodyH - 2, 5);
+            ctx.fill();
+            ctx.strokeStyle = '#884400';
+            ctx.lineWidth = 1;
+            roundRect(p.x - bodyW/2, p.y - bodyH + 2, bodyW, bodyH - 2, 5);
+            ctx.stroke();
+            // Hazard stripes (diagonal)
+            ctx.save();
+            ctx.beginPath();
+            roundRect(p.x - bodyW/2, p.y - bodyH + 2, bodyW, bodyH - 2, 5);
+            ctx.clip();
+            ctx.fillStyle = '#222';
+            for (let s = -3; s < 5; s++) {
+                const sx = p.x - bodyW/2 + s * 5;
+                ctx.beginPath();
+                ctx.moveTo(sx, p.y - bodyH + 2);
+                ctx.lineTo(sx + 3, p.y - bodyH + 2);
+                ctx.lineTo(sx + 3 + bodyH, p.y);
+                ctx.lineTo(sx + bodyH, p.y);
+                ctx.closePath();
+                ctx.fill();
+            }
+            ctx.restore();
+            // Pilot flame (animated)
+            const flameFlicker = Math.sin(tTime * 15) * 1.5;
+            ctx.fillStyle = '#ff4400';
+            ctx.beginPath(); ctx.arc(p.x, p.y - bodyH, 3 + flameFlicker * 0.3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#ffcc00';
+            ctx.beginPath(); ctx.arc(p.x, p.y - bodyH, 1.5, 0, Math.PI * 2); ctx.fill();
+            // Pressure gauge
+            ctx.fillStyle = '#ddd';
+            ctx.beginPath(); ctx.arc(p.x + bodyW/2 - 2, p.y - bodyH/2, 2.5, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 0.5; ctx.stroke();
+            ctx.strokeStyle = '#f00';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(p.x + bodyW/2 - 2, p.y - bodyH/2);
+            const gaugeAngle = -Math.PI * 0.3 + Math.sin(tTime) * 0.3;
+            ctx.lineTo(p.x + bodyW/2 - 2 + Math.cos(gaugeAngle) * 2, p.y - bodyH/2 + Math.sin(gaugeAngle) * 2);
+            ctx.stroke();
+        } else if (tower.type === 'emp') {
+            // Tesla coil with enhanced effects
+            // Base column
+            const colGrad = ctx.createLinearGradient(p.x, p.y, p.x, p.y - bodyH);
+            colGrad.addColorStop(0, '#1a5a90');
+            colGrad.addColorStop(1, '#2080c0');
+            ctx.fillStyle = colGrad;
+            ctx.fillRect(p.x - 5, p.y - 8, 10, 8);
+            ctx.strokeStyle = '#104060';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(p.x - 5, p.y - 8, 10, 8);
+            // Coil rings with glow
+            for (let i = 0; i < 5; i++) {
+                const ry = p.y - 9 - i * 2.5;
+                const rw = 7 - i * 0.6;
+                ctx.strokeStyle = `rgba(41,182,246,${0.6 + Math.sin(tTime * 3 + i) * 0.2})`;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.ellipse(p.x, ry, rw, 2, 0, 0, Math.PI * 2); ctx.stroke();
+            }
+            // Top orb with animated glow
+            const orbY = p.y - bodyH - 3;
+            const orbPulse = 4 + Math.sin(tTime * 4) * 0.8;
+            // Outer glow
+            const orbGlow = ctx.createRadialGradient(p.x, orbY, 1, p.x, orbY, orbPulse + 4);
+            orbGlow.addColorStop(0, 'rgba(100,220,255,0.4)');
+            orbGlow.addColorStop(1, 'rgba(100,220,255,0)');
+            ctx.fillStyle = orbGlow;
+            ctx.beginPath(); ctx.arc(p.x, orbY, orbPulse + 4, 0, Math.PI * 2); ctx.fill();
+            // Orb
+            const orbGrad = ctx.createRadialGradient(p.x - 1, orbY - 1, 0.5, p.x, orbY, orbPulse);
+            orbGrad.addColorStop(0, '#ffffff');
+            orbGrad.addColorStop(0.3, '#80e0ff');
+            orbGrad.addColorStop(0.7, '#2090cc');
+            orbGrad.addColorStop(1, '#0060a0');
+            ctx.fillStyle = orbGrad;
+            ctx.beginPath(); ctx.arc(p.x, orbY, orbPulse, 0, Math.PI * 2); ctx.fill();
+            // Lightning arcs (animated, more detailed)
+            ctx.lineWidth = 1;
+            for (let a = 0; a < 4; a++) {
+                const angle = tTime * 3 + a * 1.57;
+                const arcLen = 8 + Math.sin(tTime * 5 + a) * 4;
+                ctx.strokeStyle = `rgba(100,220,255,${0.4 + Math.sin(tTime * 7 + a) * 0.3})`;
+                ctx.beginPath();
+                ctx.moveTo(p.x, orbY);
+                const midX = p.x + Math.cos(angle) * arcLen * 0.5 + Math.sin(tTime * 8 + a) * 3;
+                const midY = orbY + Math.sin(angle) * arcLen * 0.4;
+                ctx.lineTo(midX, midY);
+                ctx.lineTo(p.x + Math.cos(angle) * arcLen, orbY + Math.sin(angle) * arcLen * 0.7);
+                ctx.stroke();
+            }
+        } else if (tower.type === 'artillery') {
+            // Heavy howitzer cannon
+            // Base platform
+            ctx.fillStyle = '#5d4037';
+            roundRect(p.x - bodyW/2 - 2, p.y - 9, bodyW + 4, 9, 2);
+            ctx.fill();
+            ctx.strokeStyle = '#3e2723';
+            ctx.lineWidth = 1;
+            roundRect(p.x - bodyW/2 - 2, p.y - 9, bodyW + 4, 9, 2);
+            ctx.stroke();
+            // Rivets
+            ctx.fillStyle = '#888';
+            for (let rv = 0; rv < 3; rv++) {
+                ctx.beginPath(); ctx.arc(p.x - 5 + rv * 5, p.y - 2, 1, 0, Math.PI * 2); ctx.fill();
+            }
+            // Wheels with spokes
+            for (let side = -1; side <= 1; side += 2) {
+                const wx = p.x + side * (bodyW/2 + 2);
+                ctx.fillStyle = '#2a2a2a';
+                ctx.beginPath(); ctx.arc(wx, p.y + 1, 4, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 1; ctx.stroke();
+                // Spokes
+                ctx.strokeStyle = '#555';
+                ctx.lineWidth = 0.5;
+                for (let sp = 0; sp < 4; sp++) {
+                    const sa = sp * Math.PI / 2;
+                    ctx.beginPath();
+                    ctx.moveTo(wx, p.y + 1);
+                    ctx.lineTo(wx + Math.cos(sa) * 3, p.y + 1 + Math.sin(sa) * 3);
+                    ctx.stroke();
+                }
+                // Hub
+                ctx.fillStyle = '#666';
+                ctx.beginPath(); ctx.arc(wx, p.y + 1, 1.5, 0, Math.PI * 2); ctx.fill();
+            }
+            // Barrel housing (thick)
+            const bhGrad = ctx.createLinearGradient(p.x - 6, 0, p.x + 6, 0);
+            bhGrad.addColorStop(0, '#5a4035');
+            bhGrad.addColorStop(0.5, '#6e5040');
+            bhGrad.addColorStop(1, '#4e342e');
+            ctx.fillStyle = bhGrad;
+            roundRect(p.x - 6, p.y - bodyH - 1, 12, bodyH - 7, 2);
+            ctx.fill();
+            ctx.strokeStyle = '#3e2723';
+            ctx.lineWidth = 0.5;
+            roundRect(p.x - 6, p.y - bodyH - 1, 12, bodyH - 7, 2);
+            ctx.stroke();
+        } else if (tower.type === 'slowdown') {
+            // Radar / wave emitter with enhanced visuals
+            // Support mast
+            ctx.fillStyle = '#6a1a8a';
+            ctx.fillRect(p.x - 2.5, p.y - bodyH + 3, 5, bodyH - 3);
+            ctx.strokeStyle = '#4a0a6a';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(p.x - 2.5, p.y - bodyH + 3, 5, bodyH - 3);
+            // Main dish (filled arc)
+            ctx.fillStyle = 'rgba(120,40,170,0.5)';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y - bodyH + 1, 10, Math.PI + 0.4, -0.4);
+            ctx.lineTo(p.x, p.y - bodyH + 1);
+            ctx.closePath();
+            ctx.fill();
+            // Dish rim
+            ctx.strokeStyle = '#bb55dd';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y - bodyH + 1, 10, Math.PI + 0.4, -0.4);
+            ctx.stroke();
+            // Inner dish
+            ctx.strokeStyle = '#dd88ff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y - bodyH + 1, 6, Math.PI + 0.5, -0.5);
+            ctx.stroke();
+            // Center emitter
+            ctx.fillStyle = '#ee88ff';
+            ctx.beginPath(); ctx.arc(p.x, p.y - bodyH + 1, 2, 0, Math.PI * 2); ctx.fill();
+            // Animated pulse waves
+            for (let pw = 0; pw < 2; pw++) {
+                const pt = (tTime * 1.5 + pw * 0.5) % 1;
+                const pulseR = pt * getEffectiveRange(tower) * 0.25;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y - bodyH + 1, pulseR, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(180,80,220,${0.35 * (1 - pt)})`;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
+
+        // === BARREL (aims at target) ===
+        if (tower.type !== 'slowdown' && tower.type !== 'emp') {
+            const barrelLen = tower.type === 'artillery' ? 18 : (tower.type === 'sniper' ? 16 : (tower.fused ? 16 : 14));
+            const barrelW = tower.type === 'artillery' ? 5 : (tower.type === 'missile' ? 3 : (tower.fused ? 4 : 3));
+            const barrelY = p.y - bodyH + (tower.type === 'artillery' ? 4 : 2);
+
+            if (tower.fused && tower.target) {
+                const angle = Math.atan2(tower.target.y - p.y, tower.target.x - p.x);
+                ctx.save();
+                ctx.translate(p.x, barrelY);
+                ctx.rotate(angle);
+                // Double barrel
+                ctx.fillStyle = '#555';
+                ctx.fillRect(0, -barrelW - 1, barrelLen, barrelW);
+                ctx.fillRect(0, 1, barrelLen, barrelW);
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 0.5;
+                ctx.strokeRect(0, -barrelW - 1, barrelLen, barrelW);
+                ctx.strokeRect(0, 1, barrelLen, barrelW);
+                // Muzzle tip
+                ctx.fillStyle = '#777';
+                ctx.fillRect(barrelLen - 2, -barrelW - 2, 3, barrelW * 2 + 4);
+                ctx.restore();
+            } else if (tower.target) {
+                const angle = Math.atan2(tower.target.y - p.y, tower.target.x - p.x);
+                ctx.save();
+                ctx.translate(p.x, barrelY);
+                ctx.rotate(angle);
+                ctx.fillStyle = '#444';
+                ctx.fillRect(0, -barrelW/2, barrelLen, barrelW);
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 0.5;
+                ctx.strokeRect(0, -barrelW/2, barrelLen, barrelW);
+                // Muzzle
+                ctx.fillStyle = '#666';
+                ctx.fillRect(barrelLen - 2, -barrelW/2 - 1, 2, barrelW + 2);
+                ctx.restore();
+            } else {
+                // Default barrel pointing right
+                ctx.fillStyle = '#444';
+                ctx.fillRect(p.x, barrelY - barrelW/2, barrelLen, barrelW);
+                ctx.fillStyle = '#666';
+                ctx.fillRect(p.x + barrelLen - 2, barrelY - barrelW/2 - 1, 2, barrelW + 2);
+            }
+        }
+
+        // === FUSION STAR ===
+        if (tower.fused) {
+            ctx.fillStyle = '#ffd700';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('⚡', p.x, p.y - bodyH - 14);
+        }
+
+        // === RANK STARS ===
+        if (rankIdx > 0) {
+            const starY = p.y - bodyH - (tower.fused ? 24 : 8);
+            ctx.fillStyle = '#ffd700';
+            ctx.strokeStyle = '#b8860b';
+            ctx.lineWidth = 0.5;
+            ctx.font = '8px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('★'.repeat(rankIdx), p.x, starY);
+        }
+
+        // === FUSION ABILITY COOLDOWN ===
+        if (tower.fused && tower.fusionAbilityCooldown > 0) {
+            const cdPct = tower.fusionAbilityCooldown / tower.fusionAbilityMaxCD;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(p.x - 12, p.y + 6, 24, 4);
+            ctx.fillStyle = '#00ff88';
+            ctx.fillRect(p.x - 12, p.y + 6, 24 * (1 - cdPct), 4);
+        }
+
+        // Reset alpha if repairing
+        if (tower.repairing) {
+            ctx.globalAlpha = 1;
+        }
+
+        // === TOWER HP BAR (only when damaged) ===
+        if (tower.hp < tower.maxHP) {
+            const hpRatio = tower.hp / tower.maxHP;
+            const barW = 26;
+            const barH = 3;
+            const barX = p.x - barW / 2;
+            const barY = p.y + 5;
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+            ctx.fillStyle = hpRatio > 0.5 ? '#4caf50' : hpRatio > 0.25 ? '#ff9800' : '#f44336';
+            ctx.fillRect(barX, barY, barW * hpRatio, barH);
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(barX, barY, barW, barH);
+        }
+
+        // === REPAIR PROGRESS BAR ===
+        if (tower.repairing) {
+            const progress = 1 - (tower.repairTimer / tower.repairDuration);
+            const barW = 26;
+            const barH = 3;
+            const barX = p.x - barW / 2;
+            const barY = p.y + 10;
+            // Background
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+            // Progress fill (yellow)
+            ctx.fillStyle = '#ffd600';
+            ctx.fillRect(barX, barY, barW * progress, barH);
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(barX, barY, barW, barH);
+            // Wrench icon (simple)
+            ctx.fillStyle = '#ffd600';
+            ctx.font = 'bold 9px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('⚒', p.x, p.y - 22);
+        }
+    }
+}
+
+// Helper: darken a hex color
+function darkenColor(hex, factor) {
+    const r = parseInt(hex.slice(1,3), 16);
+    const g = parseInt(hex.slice(3,5), 16);
+    const b = parseInt(hex.slice(5,7), 16);
+    return `rgb(${Math.floor(r*factor)},${Math.floor(g*factor)},${Math.floor(b*factor)})`;
+}
+
+// Helper: rounded rectangle path
+function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+// Draw enemy projectiles (enemy shooting at towers)
+function drawEnemyProjectiles() {
+    for (const p of gameState.enemyProjectiles) {
+        const rad = p.isTank ? 4 : 2.8;
+        // Outer glow
+        const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rad + 6);
+        glow.addColorStop(0, p.isTank ? 'rgba(255,100,0,0.35)' : 'rgba(255,60,30,0.3)');
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(p.x, p.y, rad + 6, 0, Math.PI * 2); ctx.fill();
+
+        // Core with gradient
+        const core = ctx.createRadialGradient(p.x - 0.5, p.y - 0.5, 0, p.x, p.y, rad);
+        core.addColorStop(0, '#ffffcc');
+        core.addColorStop(0.3, p.isTank ? '#ff8800' : '#ff4444');
+        core.addColorStop(1, p.isTank ? '#cc4400' : '#cc2222');
+        ctx.fillStyle = core;
+        ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2); ctx.fill();
+
+        // Trail with fade
+        const trailMult = p.isTank ? 0.08 : 0.06;
+        ctx.strokeStyle = p.isTank ? 'rgba(255,120,0,0.5)' : 'rgba(255,60,60,0.5)';
+        ctx.lineWidth = p.isTank ? 3 : 2;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - p.vx * trailMult, p.y - p.vy * trailMult);
+        ctx.stroke();
+        // Smoke trail for tank rounds
+        if (p.isTank) {
+            ctx.fillStyle = 'rgba(100,80,60,0.2)';
+            ctx.beginPath();
+            ctx.arc(p.x - p.vx * 0.05, p.y - p.vy * 0.05, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+}
+
+function drawEnemies() {
+    for (const enemy of gameState.enemies) {
+        if (enemy.dead) continue;
+
+        const size = enemy.size;
+        const isBoss = enemy.isBoss;
+        const ex = enemy.x;
+        const ey = enemy.y;
+
+        // Get movement direction for facing
+        const ePath = enemy.path || pathWaypoints;
+        let facingX = 1, facingY = 0;
+        if (enemy.waypointIdx < ePath.length - 1) {
+            const nxt = ePath[enemy.waypointIdx + 1];
+            const fd = Math.hypot(nxt.x - ex, nxt.y - ey) || 1;
+            facingX = (nxt.x - ex) / fd;
+            facingY = (nxt.y - ey) / fd;
+        }
+
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath();
+        ctx.ellipse(ex, ey + size * 0.5, size * 0.9, size * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Boss glow aura
+        if (isBoss) {
+            ctx.beginPath();
+            ctx.arc(ex, ey, size + 5, 0, Math.PI * 2);
+            const bossGrad = ctx.createRadialGradient(ex, ey, size * 0.5, ex, ey, size + 5);
+            bossGrad.addColorStop(0, 'rgba(255,215,0,0.15)');
+            bossGrad.addColorStop(1, 'rgba(255,215,0,0)');
+            ctx.fillStyle = bossGrad;
+            ctx.fill();
+        }
+
+        // Surrender flash
+        if (!isBoss && enemy.hp / enemy.maxHP <= 0.15 && Math.floor(Date.now() / 400) % 2 === 0) {
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `${size + 2}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText('🏳', ex + size + 4, ey - size);
+        }
+
+        ctx.save();
+        const baseColor = enemy.stunTimer > 0 ? '#29b6f6' : enemy.color;
+        const eTime = Date.now() * 0.001;
+
+        if (enemy.type === 'infantry') {
+            // Detailed soldier figure
+            const legSpread = Math.sin(Date.now() * 0.008 + enemy.waypointIdx) * 2.5;
+            // Boots
+            ctx.fillStyle = '#333';
+            ctx.beginPath(); ctx.arc(ex - 2 - legSpread, ey + size * 0.65, 1.8, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(ex + 2 + legSpread, ey + size * 0.65, 1.8, 0, Math.PI * 2); ctx.fill();
+            // Legs
+            ctx.strokeStyle = darkenColor(baseColor, 0.5);
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(ex - 2, ey + 1); ctx.lineTo(ex - 2 - legSpread, ey + size * 0.6); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(ex + 2, ey + 1); ctx.lineTo(ex + 2 + legSpread, ey + size * 0.6); ctx.stroke();
+            // Body (torso) with gradient
+            const bodyGrad = ctx.createLinearGradient(ex - 4, ey - size * 0.5, ex + 4, ey + 2);
+            bodyGrad.addColorStop(0, baseColor);
+            bodyGrad.addColorStop(1, darkenColor(baseColor, 0.7));
+            ctx.fillStyle = bodyGrad;
+            roundRect(ex - 4, ey - size * 0.5, 8, size * 0.75, 2);
+            ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.6);
+            ctx.lineWidth = 0.7;
+            roundRect(ex - 4, ey - size * 0.5, 8, size * 0.75, 2);
+            ctx.stroke();
+            // Belt
+            ctx.fillStyle = darkenColor(baseColor, 0.4);
+            ctx.fillRect(ex - 4, ey - 1, 8, 2);
+            // Arms
+            ctx.strokeStyle = darkenColor(baseColor, 0.65);
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(ex - 4, ey - size * 0.3); ctx.lineTo(ex - 5, ey); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(ex + 4, ey - size * 0.3);
+            ctx.lineTo(ex + 3 + facingX * 4, ey - 2 + facingY * 4); ctx.stroke();
+            // Helmet with detail
+            ctx.fillStyle = darkenColor(baseColor, 0.55);
+            ctx.beginPath(); ctx.arc(ex, ey - size * 0.58, 4.5, 0, Math.PI * 2); ctx.fill();
+            // Helmet rim
+            ctx.fillStyle = darkenColor(baseColor, 0.45);
+            ctx.beginPath(); ctx.ellipse(ex, ey - size * 0.52, 5.5, 2.2, 0, Math.PI, Math.PI * 2); ctx.fill();
+            // Helmet highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.beginPath(); ctx.arc(ex - 1, ey - size * 0.65, 2, 0, Math.PI * 2); ctx.fill();
+            // Face (skin tone)
+            ctx.fillStyle = '#c8a882';
+            ctx.beginPath(); ctx.arc(ex, ey - size * 0.42, 2.5, 0, Math.PI * 2); ctx.fill();
+            // Weapon (rifle with detail)
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(ex + 3, ey - 3);
+            ctx.lineTo(ex + 3 + facingX * 8, ey - 3 + facingY * 8);
+            ctx.stroke();
+            // Rifle stock
+            ctx.strokeStyle = '#5a3a20';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(ex + 3, ey - 3);
+            ctx.lineTo(ex + 2, ey);
+            ctx.stroke();
+
+        } else if (enemy.type === 'jeep') {
+            // Detailed military jeep
+            const angle = Math.atan2(facingY, facingX);
+            ctx.save();
+            ctx.translate(ex, ey);
+            ctx.rotate(angle);
+            // Undercarriage
+            ctx.fillStyle = '#1a1a1a';
+            roundRect(-size * 0.65, -size * 0.3, size * 1.3, size * 0.6, 1);
+            ctx.fill();
+            // Body with gradient
+            const jGrad = ctx.createLinearGradient(0, -size * 0.4, 0, size * 0.4);
+            jGrad.addColorStop(0, baseColor);
+            jGrad.addColorStop(1, darkenColor(baseColor, 0.7));
+            ctx.fillStyle = jGrad;
+            roundRect(-size * 0.7, -size * 0.35, size * 1.4, size * 0.7, 3);
+            ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.5);
+            ctx.lineWidth = 1;
+            roundRect(-size * 0.7, -size * 0.35, size * 1.4, size * 0.7, 3);
+            ctx.stroke();
+            // Hood details
+            ctx.fillStyle = darkenColor(baseColor, 0.8);
+            ctx.fillRect(-size * 0.65, -size * 0.25, size * 0.5, size * 0.5);
+            // Windshield with glare
+            const wsGrad = ctx.createLinearGradient(size * 0.15, -size * 0.3, size * 0.5, size * 0.3);
+            wsGrad.addColorStop(0, 'rgba(150,210,255,0.6)');
+            wsGrad.addColorStop(0.5, 'rgba(100,180,255,0.3)');
+            wsGrad.addColorStop(1, 'rgba(80,160,240,0.5)');
+            ctx.fillStyle = wsGrad;
+            ctx.fillRect(size * 0.15, -size * 0.28, size * 0.35, size * 0.56);
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(size * 0.15, -size * 0.28, size * 0.35, size * 0.56);
+            // Wheels with rubber detail
+            for (const [wx, wy] of [[-size*0.45,-size*0.42],[-size*0.45,size*0.42],[size*0.35,-size*0.42],[size*0.35,size*0.42]]) {
+                ctx.fillStyle = '#1a1a1a';
+                ctx.beginPath(); ctx.arc(wx, wy, 3, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#333';
+                ctx.beginPath(); ctx.arc(wx, wy, 1.5, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 0.5; ctx.stroke();
+            }
+            // Headlights
+            ctx.fillStyle = '#ffee88';
+            ctx.beginPath(); ctx.arc(-size * 0.65, -size * 0.2, 1.5, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(-size * 0.65, size * 0.2, 1.5, 0, Math.PI * 2); ctx.fill();
+            // Roof gun mount
+            ctx.fillStyle = '#666';
+            ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#444';
+            ctx.fillRect(-1, -1.5, 9, 3);
+            ctx.fillStyle = '#555';
+            ctx.fillRect(7, -2, 2, 4);
+            ctx.restore();
+
+        } else if (enemy.type === 'tank') {
+            // Detailed battle tank
+            const angle = Math.atan2(facingY, facingX);
+            ctx.save();
+            ctx.translate(ex, ey);
+            ctx.rotate(angle);
+            // Track assemblies with wheel detail
+            for (const ty of [-size * 0.5, size * 0.27]) {
+                ctx.fillStyle = '#3a3a3a';
+                roundRect(-size * 0.72, ty, size * 1.44, size * 0.23, 2);
+                ctx.fill();
+                ctx.strokeStyle = '#2a2a2a';
+                ctx.lineWidth = 0.5;
+                roundRect(-size * 0.72, ty, size * 1.44, size * 0.23, 2);
+                ctx.stroke();
+                // Track links
+                ctx.strokeStyle = '#4a4a4a';
+                ctx.lineWidth = 0.8;
+                for (let i = 0; i < 7; i++) {
+                    const tx = -size * 0.6 + i * size * 0.2;
+                    ctx.beginPath(); ctx.moveTo(tx, ty + 1); ctx.lineTo(tx, ty + size * 0.21); ctx.stroke();
+                }
+                // Road wheels
+                ctx.fillStyle = '#555';
+                for (let i = 0; i < 4; i++) {
+                    const wx = -size * 0.5 + i * size * 0.33;
+                    ctx.beginPath(); ctx.arc(wx, ty + size * 0.115, 2.5, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#444';
+                    ctx.beginPath(); ctx.arc(wx, ty + size * 0.115, 1.2, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#555';
+                }
+            }
+            // Hull with gradient
+            const hGrad = ctx.createLinearGradient(0, -size * 0.35, 0, size * 0.35);
+            hGrad.addColorStop(0, baseColor);
+            hGrad.addColorStop(1, darkenColor(baseColor, 0.65));
+            ctx.fillStyle = hGrad;
+            roundRect(-size * 0.58, -size * 0.32, size * 1.16, size * 0.64, 3);
+            ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.5);
+            ctx.lineWidth = 1;
+            roundRect(-size * 0.58, -size * 0.32, size * 1.16, size * 0.64, 3);
+            ctx.stroke();
+            // Hull details - hatches, vents
+            ctx.fillStyle = darkenColor(baseColor, 0.6);
+            ctx.fillRect(-size * 0.45, -size * 0.15, size * 0.3, size * 0.3);
+            // Turret with gradient
+            const tGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.35);
+            tGrad.addColorStop(0, darkenColor(baseColor, 0.9));
+            tGrad.addColorStop(1, darkenColor(baseColor, 0.6));
+            ctx.fillStyle = tGrad;
+            ctx.beginPath(); ctx.arc(0, 0, size * 0.32, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.45);
+            ctx.lineWidth = 1; ctx.stroke();
+            // Commander hatch
+            ctx.fillStyle = darkenColor(baseColor, 0.5);
+            ctx.beginPath(); ctx.arc(-size * 0.1, -size * 0.1, 2, 0, Math.PI * 2); ctx.fill();
+            // Main gun with muzzle brake
+            ctx.fillStyle = '#4a4a4a';
+            ctx.fillRect(size * 0.28, -2.5, size * 0.6, 5);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(size * 0.28, -2.5, size * 0.6, 5);
+            // Muzzle brake
+            ctx.fillStyle = '#555';
+            ctx.fillRect(size * 0.82, -3.5, 3, 7);
+            // Reactive armor blocks
+            ctx.fillStyle = darkenColor(baseColor, 0.55);
+            ctx.fillRect(-size * 0.55, -size * 0.28, 3, size * 0.56);
+            ctx.restore();
+
+        } else if (enemy.type === 'enemyArt') {
+            // Detailed self-propelled artillery
+            const angle = Math.atan2(facingY, facingX);
+            ctx.save();
+            ctx.translate(ex, ey);
+            ctx.rotate(angle);
+            // Track assemblies
+            for (const ty of [-size * 0.52, size * 0.3]) {
+                ctx.fillStyle = '#333';
+                roundRect(-size * 0.78, ty, size * 1.56, size * 0.22, 2);
+                ctx.fill();
+                ctx.strokeStyle = '#252525';
+                ctx.lineWidth = 0.5;
+                roundRect(-size * 0.78, ty, size * 1.56, size * 0.22, 2);
+                ctx.stroke();
+                // Track links
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 0.6;
+                for (let i = 0; i < 8; i++) {
+                    const tx = -size * 0.65 + i * size * 0.19;
+                    ctx.beginPath(); ctx.moveTo(tx, ty + 1); ctx.lineTo(tx, ty + size * 0.2); ctx.stroke();
+                }
+            }
+            // Hull with gradient
+            const ahGrad = ctx.createLinearGradient(0, -size * 0.4, 0, size * 0.4);
+            ahGrad.addColorStop(0, baseColor);
+            ahGrad.addColorStop(1, darkenColor(baseColor, 0.6));
+            ctx.fillStyle = ahGrad;
+            roundRect(-size * 0.63, -size * 0.37, size * 1.26, size * 0.74, 3);
+            ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.45);
+            ctx.lineWidth = 1;
+            roundRect(-size * 0.63, -size * 0.37, size * 1.26, size * 0.74, 3);
+            ctx.stroke();
+            // Turret housing
+            const thGrad = ctx.createLinearGradient(-size * 0.3, 0, size * 0.3, 0);
+            thGrad.addColorStop(0, darkenColor(baseColor, 0.8));
+            thGrad.addColorStop(1, darkenColor(baseColor, 0.6));
+            ctx.fillStyle = thGrad;
+            roundRect(-size * 0.32, -size * 0.27, size * 0.64, size * 0.54, 3);
+            ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.4);
+            ctx.lineWidth = 0.5;
+            roundRect(-size * 0.32, -size * 0.27, size * 0.64, size * 0.54, 3);
+            ctx.stroke();
+            // Long cannon with reinforcement rings
+            ctx.fillStyle = '#4a4a4a';
+            ctx.fillRect(size * 0.22, -3.5, size * 0.85, 7);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(size * 0.22, -3.5, size * 0.85, 7);
+            // Reinforcement rings
+            ctx.fillStyle = '#555';
+            ctx.fillRect(size * 0.4, -4, 2, 8);
+            ctx.fillRect(size * 0.6, -4, 2, 8);
+            // Muzzle brake (larger)
+            ctx.fillStyle = '#666';
+            ctx.fillRect(size * 0.95, -5, 4, 10);
+            ctx.fillStyle = '#555';
+            ctx.fillRect(size * 0.97, -4, 2, 2);
+            ctx.fillRect(size * 0.97, 2, 2, 2);
+            // Ammo hatch
+            ctx.fillStyle = darkenColor(baseColor, 0.5);
+            ctx.fillRect(-size * 0.55, -size * 0.15, size * 0.2, size * 0.3);
+            ctx.restore();
+        }
+
+        ctx.restore();
+
+        // === SHOOTING FLASH ===
+        if (enemy.shootFlash > 0) {
+            ctx.beginPath();
+            ctx.arc(ex, ey, size + 6, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,150,50,${enemy.shootFlash * 0.3})`;
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(ex, ey, size + 2, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,255,200,${enemy.shootFlash * 0.4})`;
+            ctx.fill();
+
+            if (enemy.shootTargetX !== undefined) {
+                const fdx = enemy.shootTargetX - ex;
+                const fdy = enemy.shootTargetY - ey;
+                const fd = Math.hypot(fdx, fdy) || 1;
+                const flashLen = 12 + size;
+                ctx.strokeStyle = `rgba(255,200,80,${enemy.shootFlash * 0.8})`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(ex, ey);
+                ctx.lineTo(ex + (fdx / fd) * flashLen, ey + (fdy / fd) * flashLen);
+                ctx.stroke();
+            }
+        }
+
+        // Boss crown
+        if (isBoss) {
+            ctx.fillStyle = '#ffd700';
+            ctx.font = `bold ${Math.max(10, size * 0.7)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText('♛', ex, ey - size - 4);
+        }
+
+        // === HP BAR ===
+        const hpRatio = enemy.hp / enemy.maxHP;
+        const barW = size * 2.5;
+        const barH = 3;
+        const barX = ex - barW / 2;
+        const barY = ey - size - (isBoss ? 16 : 10);
+
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        ctx.fillStyle = hpRatio > 0.5 ? '#4caf50' : hpRatio > 0.25 ? '#ff9800' : '#f44336';
+        ctx.fillRect(barX, barY, barW * hpRatio, barH);
+
+        // DOT indicator (fire icon)
+        if (enemy.dotTimer > 0) {
+            ctx.fillStyle = '#ff6f00';
+            ctx.font = '7px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('🔥', ex + size + 2, ey - size + 2);
+        }
+
+        // Slow indicator (ice)
+        if (enemy.slowTimer > 0) {
+            ctx.fillStyle = '#ab47bc';
+            ctx.font = '7px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('❄', ex - size - 2, ey - size + 2);
+        }
+    }
+}
+
+// Draw allied POW units (surrendered enemies walking backward)
+function drawAllies() {
+    for (const ally of gameState.allies) {
+        if (ally.dead) continue;
+
+        const size = ally.size;
+        const ax = ally.x, ay = ally.y;
+
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath(); ctx.ellipse(ax, ay + size * 0.4, size * 0.8, size * 0.25, 0, 0, Math.PI * 2); ctx.fill();
+
+        // Green glow - allied
+        const allyGlow = ctx.createRadialGradient(ax, ay, size * 0.5, ax, ay, size + 4);
+        allyGlow.addColorStop(0, 'rgba(76,175,80,0.4)');
+        allyGlow.addColorStop(1, 'rgba(76,175,80,0)');
+        ctx.fillStyle = allyGlow;
+        ctx.beginPath(); ctx.arc(ax, ay, size + 4, 0, Math.PI * 2); ctx.fill();
+
+        // Body with gradient
+        const powGrad = ctx.createRadialGradient(ax - 1, ay - 1, 0, ax, ay, size);
+        powGrad.addColorStop(0, '#88dd88');
+        powGrad.addColorStop(1, '#4a9a4a');
+        ctx.fillStyle = powGrad;
+        ctx.beginPath(); ctx.arc(ax, ay, size, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#2a7a2a';
+        ctx.lineWidth = 1.5; ctx.stroke();
+
+        // Hands up gesture (surrender)
+        ctx.strokeStyle = '#c8a882';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(ax - 3, ay - 2); ctx.lineTo(ax - 5, ay - size - 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ax + 3, ay - 2); ctx.lineTo(ax + 5, ay - size - 2); ctx.stroke();
+
+        // POW label
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.font = 'bold 7px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('POW', ax + 0.5, ay + 3.5);
+        ctx.fillStyle = '#fff';
+        ctx.fillText('POW', ax, ay + 3);
+
+        // HP bar
+        const hpRatio = ally.hp / ally.maxHP;
+        const barW = size * 2.2;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(ax - barW/2 - 1, ay - size - 7, barW + 2, 4);
+        ctx.fillStyle = '#4caf50';
+        ctx.fillRect(ax - barW/2, ay - size - 6, barW * hpRatio, 3);
+    }
+}
+
+// Draw airstrike effects
+function drawAirstrikeEffects() {
+    for (const strike of gameState.airstrikeEffects) {
+        const progress = 1 - (strike.timer / strike.maxTimer);
+
+        if (progress < 0.3) {
+            // Incoming phase - red circle shrinking
+            const shrink = 1 - (progress / 0.3);
+            ctx.beginPath();
+            ctx.arc(strike.x, strike.y, strike.radius * (1 + shrink), 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(255,50,50,${0.8 * shrink})`;
+            ctx.lineWidth = 3;
+            ctx.setLineDash([8, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        } else {
+            // Explosion phase
+            const explodeProgress = (progress - 0.3) / 0.7;
+            const alpha = 1 - explodeProgress;
+
+            ctx.beginPath();
+            ctx.arc(strike.x, strike.y, strike.radius * (0.5 + explodeProgress * 0.5), 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,${Math.floor(150 * (1 - explodeProgress))},0,${alpha * 0.4})`;
+            ctx.fill();
+
+            // Shockwave ring
+            ctx.beginPath();
+            ctx.arc(strike.x, strike.y, strike.radius * explodeProgress, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(255,200,50,${alpha * 0.8})`;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+    }
+}
+
+function drawProjectiles() {
+    for (const p of gameState.projectiles) {
+        const isSplash = p.splash > 0;
+        const rad = isSplash ? 4.5 : 2.5;
+
+        // Outer glow
+        const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rad + 5);
+        glow.addColorStop(0, p.color.replace(')', ',0.3)').replace('rgb', 'rgba'));
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(p.x, p.y, rad + 5, 0, Math.PI * 2); ctx.fill();
+
+        // Core projectile with gradient
+        const core = ctx.createRadialGradient(p.x - 0.5, p.y - 0.5, 0, p.x, p.y, rad);
+        core.addColorStop(0, '#fff');
+        core.addColorStop(0.4, p.color);
+        core.addColorStop(1, p.color);
+        ctx.fillStyle = core;
+        ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2); ctx.fill();
+
+        // Trail (longer, fading)
+        const trailLen = isSplash ? 0.08 : 0.06;
+        ctx.strokeStyle = p.color;
+        ctx.globalAlpha = 0.4;
+        ctx.lineWidth = isSplash ? 3 : 1.5;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - p.vx * trailLen, p.y - p.vy * trailLen);
+        ctx.stroke();
+        ctx.globalAlpha = 0.15;
+        ctx.lineWidth = isSplash ? 5 : 3;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - p.vx * trailLen * 1.5, p.y - p.vy * trailLen * 1.5);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    }
+}
+
+function drawParticles() {
+    for (const p of gameState.particles) {
+        const lifeRatio = p.life / p.maxLife;
+        ctx.globalAlpha = lifeRatio;
+        const curSize = p.size * (0.3 + lifeRatio * 0.7);
+        // Glow
+        if (curSize > 2) {
+            ctx.fillStyle = p.color.includes('rgba') ? p.color : p.color;
+            ctx.globalAlpha = lifeRatio * 0.3;
+            ctx.beginPath(); ctx.arc(p.x, p.y, curSize * 1.8, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = lifeRatio;
+        }
+        // Core
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, curSize, 0, Math.PI * 2); ctx.fill();
+        // Bright center
+        if (curSize > 1.5) {
+            ctx.fillStyle = 'rgba(255,255,255,0.4)';
+            ctx.beginPath(); ctx.arc(p.x, p.y, curSize * 0.3, 0, Math.PI * 2); ctx.fill();
+        }
+    }
+    ctx.globalAlpha = 1;
+}
+
+function drawFlamethrowerBeams() {
+    for (const tower of gameState.towers) {
+        if (tower.type !== 'flamethrower' || !tower.target) continue;
+        const p = gridCenter(tower.col, tower.row);
+        const target = tower.target;
+        const dist = Math.hypot(target.x - p.x, target.y - p.y);
+        if (dist > getEffectiveRange(tower)) continue;
+
+        // Inferno mode - 360° ring
+        if (tower.fused && tower.abilityActive) {
+            const range = getEffectiveRange(tower) * 0.8;
+            const grad = ctx.createRadialGradient(p.x, p.y - 14, 10, p.x, p.y - 14, range);
+            grad.addColorStop(0, 'rgba(255,150,0,0.5)');
+            grad.addColorStop(0.5, 'rgba(255,80,0,0.3)');
+            grad.addColorStop(1, 'rgba(255,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y - 14, range, 0, Math.PI * 2);
+            ctx.fill();
+            continue;
+        }
+
+        const angle = Math.atan2(target.y - (p.y - 14), target.x - p.x);
+        const len = Math.min(dist, getEffectiveRange(tower));
+        const ft = Date.now() * 0.001;
+
+        ctx.save();
+        ctx.translate(p.x, p.y - 14);
+        ctx.rotate(angle);
+
+        // Outer heat shimmer
+        const shimmer = ctx.createLinearGradient(0, 0, len, 0);
+        shimmer.addColorStop(0, 'rgba(255,200,50,0.15)');
+        shimmer.addColorStop(0.5, 'rgba(255,100,0,0.08)');
+        shimmer.addColorStop(1, 'rgba(255,0,0,0)');
+        ctx.fillStyle = shimmer;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(len, -20 + Math.sin(ft * 10) * 3);
+        ctx.lineTo(len, 20 + Math.sin(ft * 12) * 3);
+        ctx.closePath();
+        ctx.fill();
+
+        // Main flame cone
+        const grad = ctx.createLinearGradient(0, 0, len, 0);
+        grad.addColorStop(0, 'rgba(255,220,100,0.9)');
+        grad.addColorStop(0.2, 'rgba(255,150,0,0.7)');
+        grad.addColorStop(0.6, 'rgba(255,60,0,0.4)');
+        grad.addColorStop(1, 'rgba(200,0,0,0.1)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        const spread = 14 + Math.sin(ft * 8) * 2;
+        ctx.lineTo(len, -spread);
+        ctx.lineTo(len, spread);
+        ctx.closePath();
+        ctx.fill();
+
+        // Inner hot core
+        const inner = ctx.createLinearGradient(0, 0, len * 0.6, 0);
+        inner.addColorStop(0, 'rgba(255,255,200,0.6)');
+        inner.addColorStop(1, 'rgba(255,200,50,0)');
+        ctx.fillStyle = inner;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(len * 0.6, -6);
+        ctx.lineTo(len * 0.6, 6);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+
+// ============================================================
+// TOWER STATS CALCULATIONS
+// ============================================================
+
+function getRank(tower) {
+    let rank = RANKS[0];
+    for (const r of RANKS) {
+        if (tower.hpDestroyed >= r.hpReq) rank = r;
+    }
+    return rank;
+}
+
+function getNextRank(tower) {
+    const current = getRank(tower);
+    const idx = RANKS.indexOf(current);
+    return idx < RANKS.length - 1 ? RANKS[idx + 1] : null;
+}
+
+function getDivision(tower) {
+    return DIVISIONS[tower.divisionLevel];
+}
+
+function getNextDivision(tower) {
+    return tower.divisionLevel < DIVISIONS.length - 1 ? DIVISIONS[tower.divisionLevel + 1] : null;
+}
+
+function getEffectiveDamage(tower) {
+    const def = TOWER_DEFS[tower.type];
+    const rank = getRank(tower);
+    const fusionMult = tower.fused ? FUSION_BONUSES[tower.type].dmgMult : 1;
+    return def.damage * rank.dmgMult * fusionMult;
+}
+
+function getEffectiveFireRate(tower) {
+    const def = TOWER_DEFS[tower.type];
+    const rank = getRank(tower);
+    const fusionMult = tower.fused ? FUSION_BONUSES[tower.type].rateMult : 1;
+    return def.fireRate / (rank.rateMult * fusionMult);
+}
+
+function getEffectiveRange(tower) {
+    const def = TOWER_DEFS[tower.type];
+    const rank = getRank(tower);
+    const fusionMult = tower.fused ? FUSION_BONUSES[tower.type].rangeMult : 1;
+    return def.range * rank.rangeMult * fusionMult;
+}
+
+function getCombinedTitle(tower) {
+    const rank = getRank(tower);
+    return rank.name;
+}
+
+// ============================================================
+// ENEMY LOGIC
+// ============================================================
+
+function spawnEnemy(type, isBoss, waveNum) {
+    const def = ENEMY_DEFS[type];
+    const enemyPath = getEnemyPath();
+    const start = enemyPath[0];
+    const hpScale = 1 + (waveNum - 1) * 0.10;
+    const bossScale = isBoss ? 5 : 1;
+
+    gameState.enemies.push({
+        type,
+        x: start.x,
+        y: start.y,
+        hp: def.baseHP * hpScale * bossScale,
+        maxHP: def.baseHP * hpScale * bossScale,
+        speed: def.speed * (isBoss ? 0.7 : 1),
+        baseDmg: def.baseDmg * (isBoss ? 3 : 1),
+        color: def.color,
+        size: def.size * (isBoss ? 1.8 : 1),
+        isBoss,
+        path: enemyPath, // each enemy has its own path (old or shortcut)
+        waypointIdx: 0,
+        dead: false,
+        dotTimer: 0,
+        dotDamage: 0,
+        dotSource: null,
+        slowTimer: 0,
+        slowAmount: 0,
+        stunTimer: 0,
+        money: Math.ceil((def.baseHP * hpScale * bossScale) / 12.5),
+        surrenderChecked: false,
+        // Shooting stats
+        canShoot: def.canShoot || false,
+        shootRange: def.shootRange || 0,
+        shootDamage: (def.shootDamage || 0) * (1 + (waveNum - 1) * 0.05),
+        shootRate: def.shootRate || 999,
+        shootCooldown: Math.random() * 2, // stagger initial shots
+        shootFlash: 0,
+        isArtillery: def.isArtillery || false,
+        artilleryCooldown: 3 + Math.random() * 4, // first blast 3-7s
+        hasBlasted: false
+    });
+}
+
+function updateEnemies(dt) {
+    for (const enemy of gameState.enemies) {
+        if (enemy.dead) continue;
+
+        // Stun
+        if (enemy.stunTimer > 0) {
+            enemy.stunTimer -= dt;
+            continue; // skip movement while stunned
+        }
+
+        // DOT
+        if (enemy.dotTimer > 0) {
+            enemy.dotTimer -= dt;
+            const dotDmg = enemy.dotDamage * dt;
+            enemy.hp -= dotDmg;
+            if (enemy.dotSource) {
+                enemy.dotSource.hpDestroyed += dotDmg;
+            }
+            if (enemy.hp <= 0) {
+                killEnemy(enemy, enemy.dotSource);
+                continue;
+            }
+        }
+
+        // === SURRENDER CHECK ===
+        // Non-boss enemies below 15% HP have a chance to surrender each frame
+        if (!enemy.isBoss && !enemy.surrenderChecked && enemy.hp / enemy.maxHP <= 0.15) {
+            enemy.surrenderChecked = true;
+            const surrenderChance = 0.01; // 1% chance to surrender
+            if (Math.random() < surrenderChance) {
+                surrenderEnemy(enemy);
+                continue;
+            }
+        }
+
+        // Slow
+        let speedMult = 1;
+        if (enemy.slowTimer > 0) {
+            enemy.slowTimer -= dt;
+            speedMult = 1 - enemy.slowAmount;
+        }
+
+        // Movement along path (each enemy follows its own path)
+        const ePath = enemy.path || pathWaypoints;
+        if (enemy.waypointIdx >= ePath.length - 1) {
+            // Reached base
+            damageBase(enemy);
+            enemy.dead = true;
+            continue;
+        }
+
+        const target = ePath[enemy.waypointIdx + 1];
+        const dx = target.x - enemy.x;
+        const dy = target.y - enemy.y;
+        const dist = Math.hypot(dx, dy);
+        const moveSpeed = enemy.speed * speedMult * dt;
+
+        if (dist <= moveSpeed) {
+            enemy.x = target.x;
+            enemy.y = target.y;
+            enemy.waypointIdx++;
+        } else {
+            enemy.x += (dx / dist) * moveSpeed;
+            enemy.y += (dy / dist) * moveSpeed;
+        }
+
+        // === LANDMINE CHECK ===
+        for (let i = gameState.landmines.length - 1; i >= 0; i--) {
+            const mine = gameState.landmines[i];
+            const mineDist = Math.hypot(enemy.x - mine.x, enemy.y - mine.y);
+            if (mineDist < 15) {
+                // Explode!
+                triggerLandmine(mine, i);
+                break;
+            }
+        }
+    }
+
+    // Clean up dead enemies
+    gameState.enemies = gameState.enemies.filter(e => !e.dead);
+}
+
+// === ENEMY SHOOTING AT TOWERS ===
+function updateEnemyShooting(dt) {
+    for (const enemy of gameState.enemies) {
+        if (enemy.dead || !enemy.canShoot || enemy.stunTimer > 0) continue;
+
+        // Decay shoot flash
+        if (enemy.shootFlash > 0) enemy.shootFlash -= dt * 3;
+
+        enemy.shootCooldown -= dt;
+        if (enemy.shootCooldown > 0) continue;
+
+        // Find nearest tower in range
+        let closestTower = null;
+        let closestDist = enemy.shootRange;
+
+        for (const tower of gameState.towers) {
+            if (tower.repairing) continue; // Can't target towers being repaired
+            const tp = gridCenter(tower.col, tower.row);
+            const dist = Math.hypot(tp.x - enemy.x, tp.y - enemy.y);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestTower = tower;
+            }
+        }
+
+        if (closestTower) {
+            enemy.shootCooldown = enemy.shootRate;
+            enemy.shootFlash = 1;
+
+            const tp = gridCenter(closestTower.col, closestTower.row);
+            const dx = tp.x - enemy.x;
+            const dy = (tp.y - 7) - enemy.y;
+            const dist = Math.hypot(dx, dy);
+            const speed = 250;
+
+            // Store target for muzzle flash direction
+            enemy.shootTargetX = tp.x;
+            enemy.shootTargetY = tp.y - 7;
+
+            const isTank = (enemy.type === 'tank' || enemy.type === 'enemyArt');
+            gameState.enemyProjectiles.push({
+                x: enemy.x, y: enemy.y,
+                vx: (dx / dist) * speed,
+                vy: (dy / dist) * speed,
+                damage: enemy.shootDamage,
+                lifetime: 2,
+                isTank
+            });
+
+            // Sound
+            if (isTank) {
+                playSoundThrottled('enemy_tank', 0.2);
+            } else {
+                playSoundThrottled('enemy_shot', 0.05);
+            }
+        }
+    }
+
+    // Update enemy projectiles
+    for (const proj of gameState.enemyProjectiles) {
+        proj.x += proj.vx * dt;
+        proj.y += proj.vy * dt;
+        proj.lifetime -= dt;
+
+        // Check collision with towers
+        for (const tower of gameState.towers) {
+            const tp = gridCenter(tower.col, tower.row);
+            const dist = Math.hypot(tp.x - proj.x, (tp.y - 7) - proj.y);
+            if (dist < 15) {
+                tower.hp -= proj.damage;
+                proj.lifetime = 0;
+                playSoundThrottled('hit', 0.08);
+
+                // Hit particle
+                gameState.particles.push({
+                    x: proj.x, y: proj.y,
+                    vx: (Math.random() - 0.5) * 40,
+                    vy: -20 - Math.random() * 20,
+                    life: 0.3, maxLife: 0.3,
+                    color: '#ff4444', size: 2
+                });
+
+                // Tower destroyed
+                if (tower.hp <= 0) {
+                    destroyTower(tower);
+                }
+                break;
+            }
+        }
+    }
+
+    gameState.enemyProjectiles = gameState.enemyProjectiles.filter(p => p.lifetime > 0);
+}
+
+function destroyTower(tower) {
+    playSound('tower_destroy');
+    const p = gridCenter(tower.col, tower.row);
+
+    // Mark tile as destroyed (unbuildable)
+    gameState.grid[tower.col][tower.row] = 3; // 3 = destroyed crater
+    gameState.destroyedTiles.add(`${tower.col},${tower.row}`);
+
+    // Explosion particles
+    for (let i = 0; i < 12; i++) {
+        gameState.particles.push({
+            x: p.x, y: p.y,
+            vx: (Math.random() - 0.5) * 120,
+            vy: (Math.random() - 0.5) * 120 - 40,
+            life: 0.6, maxLife: 0.6,
+            color: ['#ff4400', '#ff6600', '#333'][Math.floor(Math.random() * 3)],
+            size: 4
+        });
+    }
+
+    gameState.towers = gameState.towers.filter(t => t !== tower);
+    if (gameState.selectedTower === tower) {
+        gameState.selectedTower = null;
+        document.getElementById('tower-info').classList.add('hidden');
+    }
+}
+
+// === ENEMY ARTILLERY - PATH BLASTING ===
+// Find shortcut corridors between distant path sections, prefer far from player towers
+function findShortcutCorridors() {
+    const corridors = [];
+
+    // Find pairs of path cells on same row or column, far apart on path
+    for (let i = 0; i < PATH_CELLS.length; i++) {
+        for (let j = i + 5; j < PATH_CELLS.length; j++) {
+            const a = PATH_CELLS[i];
+            const b = PATH_CELLS[j];
+            const pathDist = j - i; // steps saved along the path
+            const gridDist = Math.abs(a.c - b.c) + Math.abs(a.r - b.r); // tiles to blast
+
+            // Must save at least 2x more path steps than tiles blasted
+            if (pathDist < gridDist * 2) continue;
+            // Minimum 4 path steps saved
+            if (pathDist < 4) continue;
+
+            // Same row - horizontal corridor (up to 6 tiles gap)
+            if (a.r === b.r && Math.abs(a.c - b.c) <= 6) {
+                const minC = Math.min(a.c, b.c);
+                const maxC = Math.max(a.c, b.c);
+                const tilesNeeded = [];
+                for (let c = minC + 1; c < maxC; c++) {
+                    const isPath = gameState.grid[c][a.r] === 1;
+                    const isBlasted = gameState.blastTiles.some(bt => bt.col === c && bt.row === a.r);
+                    if (!isPath && !isBlasted) {
+                        tilesNeeded.push({ col: c, row: a.r });
+                    }
+                }
+                if (tilesNeeded.length > 0) {
+                    corridors.push({ tiles: tilesNeeded, pathSkip: pathDist, from: a, to: b });
+                }
+            }
+
+            // Same column - vertical corridor (up to 6 tiles gap)
+            if (a.c === b.c && Math.abs(a.r - b.r) <= 6) {
+                const minR = Math.min(a.r, b.r);
+                const maxR = Math.max(a.r, b.r);
+                const tilesNeeded = [];
+                for (let r = minR + 1; r < maxR; r++) {
+                    const isPath = gameState.grid[a.c][r] === 1;
+                    const isBlasted = gameState.blastTiles.some(bt => bt.col === a.c && bt.row === r);
+                    if (!isPath && !isBlasted) {
+                        tilesNeeded.push({ col: a.c, row: r });
+                    }
+                }
+                if (tilesNeeded.length > 0) {
+                    corridors.push({ tiles: tilesNeeded, pathSkip: pathDist, from: a, to: b });
+                }
+            }
+        }
+    }
+
+    // Score each corridor: prefer far from towers + big path skip
+    for (const corr of corridors) {
+        let minTowerDist = Infinity;
+        for (const tile of corr.tiles) {
+            for (const tower of gameState.towers) {
+                const dist = Math.abs(tile.col - tower.col) + Math.abs(tile.row - tower.row);
+                if (dist < minTowerDist) minTowerDist = dist;
+            }
+        }
+        if (minTowerDist === Infinity) minTowerDist = 20;
+
+        // Score: tower distance matters a lot + path skip bonus + efficiency bonus
+        const efficiency = corr.pathSkip / corr.tiles.length; // steps saved per tile blasted
+        corr.score = minTowerDist * 3 + corr.pathSkip + efficiency * 2;
+    }
+
+    // Sort by best score (highest = farthest from towers + biggest shortcut)
+    corridors.sort((a, b) => b.score - a.score);
+    return corridors;
+}
+
+// Find the next tile to blast in the best corridor (blast one tile at a time)
+function findNextBlastTarget() {
+    const corridors = findShortcutCorridors();
+    if (corridors.length === 0) return null;
+
+    // Pick the best corridor
+    const best = corridors[0];
+
+    // Only blast tiles that are directly adjacent to existing path or blasted tiles
+    // This ensures the new road always extends from the path (no isolated blasts)
+    for (const tile of best.tiles) {
+        const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+        let adjToPath = false;
+        for (const [dc, dr] of dirs) {
+            const nc = tile.col + dc;
+            const nr = tile.row + dr;
+            if (nc >= 0 && nc < GRID_COLS && nr >= 0 && nr < GRID_ROWS) {
+                if (gameState.grid[nc][nr] === 1) {
+                    adjToPath = true;
+                    break;
+                }
+            }
+        }
+        if (adjToPath) {
+            return { col: tile.col, row: tile.row, pathSkip: best.pathSkip };
+        }
+    }
+
+    // No tile adjacent to path found - skip this corridor, don't blast isolated tiles
+    return null;
+}
+
+function updateEnemyArtillery(dt) {
+    for (const enemy of gameState.enemies) {
+        if (enemy.dead || !enemy.isArtillery || enemy.stunTimer > 0) continue;
+
+        enemy.artilleryCooldown -= dt;
+        if (enemy.artilleryCooldown > 0) continue;
+
+        // Find next tile to blast (one at a time, progressively building corridor)
+        const target = findNextBlastTarget();
+
+        if (target) {
+            // Destroy tower if present on the tile
+            const towerOnTile = gameState.towers.find(t => t.col === target.col && t.row === target.row);
+            if (towerOnTile) {
+                destroyTower(towerOnTile);
+            }
+
+            // Blast tile open - mark as path
+            gameState.grid[target.col][target.row] = 1;
+            pathSet.add(`${target.col},${target.row}`);
+            gameState.blastTiles.push({ col: target.col, row: target.row });
+
+            // Visual explosion
+            const tp = gridCenter(target.col, target.row);
+            for (let i = 0; i < 15; i++) {
+                gameState.particles.push({
+                    x: tp.x, y: tp.y,
+                    vx: (Math.random() - 0.5) * 150,
+                    vy: (Math.random() - 0.5) * 150 - 50,
+                    life: 0.7, maxLife: 0.7,
+                    color: ['#ff4400', '#8b2020', '#553300'][Math.floor(Math.random() * 3)],
+                    size: 5
+                });
+            }
+            playSound('explosion');
+
+            // Recalculate shortcut path - enemies only use it once corridor is complete
+            rebuildPathWithBlasts();
+
+            enemy.artilleryCooldown = 6 + Math.random() * 6;
+        } else {
+            enemy.artilleryCooldown = 4;
+        }
+    }
+}
+
+// Build BFS shortcut path from blasted tiles (does NOT overwrite original path)
+function rebuildShortcutPath() {
+    if (gameState.blastTiles.length === 0) {
+        shortcutWaypoints = null;
+        return;
+    }
+
+    // BFS from spawn to base through all walkable tiles (original path + blasted)
+    const start = PATH_CELLS[0];
+    const end = PATH_CELLS[PATH_CELLS.length - 1];
+
+    const walkable = new Set();
+    for (const p of PATH_CELLS) {
+        walkable.add(`${p.c},${p.r}`);
+    }
+    for (const b of gameState.blastTiles) {
+        walkable.add(`${b.col},${b.row}`);
+    }
+
+    // BFS to find shortest path
+    const queue = [{ c: start.c, r: start.r }];
+    const visited = new Set([`${start.c},${start.r}`]);
+    const parent = {};
+
+    while (queue.length > 0) {
+        const curr = queue.shift();
+
+        if (curr.c === end.c && curr.r === end.r) {
+            const newPath = [];
+            let node = curr;
+            while (node) {
+                newPath.unshift({ c: node.c, r: node.r });
+                node = parent[`${node.c},${node.r}`];
+            }
+
+            shortcutWaypoints = newPath.map(p => gridCenter(p.c, p.r));
+            return;
+        }
+
+        const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+        for (const [dc, dr] of dirs) {
+            const nc = curr.c + dc;
+            const nr = curr.r + dr;
+            const key = `${nc},${nr}`;
+            if (walkable.has(key) && !visited.has(key)) {
+                visited.add(key);
+                parent[key] = curr;
+                queue.push({ c: nc, r: nr });
+            }
+        }
+    }
+}
+
+// Called when a blast happens - rebuild shortcut and let some existing enemies switch to it
+function rebuildPathWithBlasts() {
+    rebuildShortcutPath();
+    // Only use shortcut if it's actually shorter than the original path
+    if (!shortcutWaypoints || shortcutWaypoints.length >= pathWaypoints.length) {
+        shortcutWaypoints = null;
+        return;
+    }
+
+    // Some existing enemies switch to the shortcut path (50% chance each)
+    for (const enemy of gameState.enemies) {
+        if (enemy.dead) continue;
+        if (Math.random() < 0.5) {
+            // Remap to closest waypoint on shortcut path
+            let closestIdx = 0;
+            let closestDist = Infinity;
+            for (let i = 0; i < shortcutWaypoints.length; i++) {
+                const d = Math.hypot(enemy.x - shortcutWaypoints[i].x, enemy.y - shortcutWaypoints[i].y);
+                if (d < closestDist) {
+                    closestDist = d;
+                    closestIdx = i;
+                }
+            }
+            enemy.path = shortcutWaypoints;
+            enemy.waypointIdx = closestIdx;
+        }
+        // Other enemies keep their current path (old or shortcut from before)
+    }
+}
+
+// Blasted roads are permanent - cannot be repaired
+
+// === SURRENDER SYSTEM ===
+function surrenderEnemy(enemy) {
+    enemy.dead = true;
+    gameState.totalPOWs++;
+    gameState.commandPoints += 2; // Bonus CP for captures
+
+    // Create allied unit walking backward on path (same path as the enemy)
+    const ally = {
+        x: enemy.x,
+        y: enemy.y,
+        hp: enemy.maxHP * 0.3, // Starts with 30% HP
+        maxHP: enemy.maxHP * 0.3,
+        damage: enemy.baseDmg * 0.5,
+        speed: enemy.speed * 0.3, // POWs move very slowly
+        size: enemy.size * 0.9,
+        path: enemy.path || pathWaypoints,
+        waypointIdx: enemy.waypointIdx,
+        dead: false,
+        attackCooldown: 0,
+        type: enemy.type
+    };
+    gameState.allies.push(ally);
+
+    // Surrender particles - white
+    for (let i = 0; i < 10; i++) {
+        gameState.particles.push({
+            x: enemy.x, y: enemy.y,
+            vx: (Math.random() - 0.5) * 60,
+            vy: (Math.random() - 0.5) * 60 - 30,
+            life: 0.8, maxLife: 0.8,
+            color: '#ffffff', size: 3
+        });
+    }
+
+    updatePOWDisplay();
+}
+
+function updateAllies(dt) {
+    for (const ally of gameState.allies) {
+        if (ally.dead) continue;
+
+        // Move backward along path (toward spawn)
+        if (ally.waypointIdx <= 0) {
+            // Reached spawn, despawn
+            ally.dead = true;
+            continue;
+        }
+
+        const target = (ally.path || pathWaypoints)[ally.waypointIdx - 1];
+        const dx = target.x - ally.x;
+        const dy = target.y - ally.y;
+        const dist = Math.hypot(dx, dy);
+        const moveSpeed = ally.speed * dt;
+
+        if (dist <= moveSpeed) {
+            ally.x = target.x;
+            ally.y = target.y;
+            ally.waypointIdx--;
+        } else {
+            ally.x += (dx / dist) * moveSpeed;
+            ally.y += (dy / dist) * moveSpeed;
+        }
+
+        // Attack nearby enemies
+        ally.attackCooldown -= dt;
+        if (ally.attackCooldown <= 0) {
+            let closestEnemy = null;
+            let closestDist = 40; // attack range
+
+            for (const enemy of gameState.enemies) {
+                if (enemy.dead) continue;
+                const eDist = Math.hypot(enemy.x - ally.x, enemy.y - ally.y);
+                if (eDist < closestDist) {
+                    closestDist = eDist;
+                    closestEnemy = enemy;
+                }
+            }
+
+            if (closestEnemy) {
+                closestEnemy.hp -= ally.damage;
+                ally.attackCooldown = 1.0;
+
+                // Attack particle
+                gameState.particles.push({
+                    x: closestEnemy.x, y: closestEnemy.y,
+                    vx: (Math.random() - 0.5) * 30,
+                    vy: -20 - Math.random() * 20,
+                    life: 0.3, maxLife: 0.3,
+                    color: '#66bb6a', size: 3
+                });
+
+                if (closestEnemy.hp <= 0) {
+                    killEnemy(closestEnemy, null);
+                    gameState.commandPoints += 1;
+                }
+            }
+        }
+
+        // Allies slowly lose HP (they're wounded POWs)
+        ally.hp -= ally.maxHP * 0.02 * dt;
+        if (ally.hp <= 0) {
+            ally.dead = true;
+        }
+    }
+
+    gameState.allies = gameState.allies.filter(a => !a.dead);
+}
+
+function killEnemy(enemy, sourceTower) {
+    enemy.dead = true;
+    gameState.money += enemy.money;
+    gameState.totalKills++;
+    gameState.totalHPDestroyed += enemy.maxHP;
+
+    // Award Command Points (1 per kill, 3 for bosses)
+    gameState.commandPoints += enemy.isBoss ? 3 : 1;
+    updateCPDisplay();
+
+    if (sourceTower) {
+        sourceTower.kills++;
+    }
+
+    // Death particles
+    for (let i = 0; i < 8; i++) {
+        gameState.particles.push({
+            x: enemy.x, y: enemy.y,
+            vx: (Math.random() - 0.5) * 100,
+            vy: (Math.random() - 0.5) * 100 - 50,
+            life: 0.5 + Math.random() * 0.3,
+            maxLife: 0.8,
+            color: enemy.isBoss ? '#ffd700' : enemy.color,
+            size: enemy.isBoss ? 5 : 3
+        });
+    }
+}
+
+function damageBase(enemy) {
+    const dmg = enemy.baseDmg * (enemy.hp / enemy.maxHP);
+    gameState.baseHP = Math.max(0, gameState.baseHP - dmg);
+    updateHPBar();
+
+    // Impact particles
+    const basePt = PATH_CELLS[PATH_CELLS.length - 1];
+    const bp = gridCenter(basePt.c, basePt.r);
+    for (let i = 0; i < 5; i++) {
+        gameState.particles.push({
+            x: bp.x, y: bp.y,
+            vx: (Math.random() - 0.5) * 80,
+            vy: -Math.random() * 80,
+            life: 0.4, maxLife: 0.4,
+            color: '#ff4444', size: 4
+        });
+    }
+
+    if (gameState.baseHP <= 0) {
+        gameOver();
+    }
+}
+
+// ============================================================
+// COMMANDER ABILITIES
+// ============================================================
+
+function useAirstrike(screenX, screenY) {
+    playSound('airstrike');
+    if (gameState.commandPoints < ABILITY_COSTS.airstrike) return;
+    gameState.commandPoints -= ABILITY_COSTS.airstrike;
+    updateCPDisplay();
+
+    const radius = 80;
+    const damage = 150 + gameState.wave * 20;
+
+    // Visual effect
+    gameState.airstrikeEffects.push({
+        x: screenX, y: screenY,
+        radius: radius,
+        timer: 1.5,
+        maxTimer: 1.5,
+        damage: damage,
+        damageDealt: false
+    });
+}
+
+function useLandmine(col, row) {
+    if (gameState.commandPoints < ABILITY_COSTS.landmine) return;
+    if (!pathSet.has(`${col},${row}`)) return; // Must be on path
+
+    gameState.commandPoints -= ABILITY_COSTS.landmine;
+    updateCPDisplay();
+
+    const p = gridCenter(col, row);
+    gameState.landmines.push({
+        x: p.x, y: p.y,
+        col, row,
+        damage: 200 + gameState.wave * 15,
+        radius: 50
+    });
+}
+
+function triggerLandmine(mine, index) {
+    playSound('explosion');
+    // Deal damage to all enemies in radius
+    for (const enemy of gameState.enemies) {
+        if (enemy.dead) continue;
+        const dist = Math.hypot(enemy.x - mine.x, enemy.y - mine.y);
+        if (dist <= mine.radius) {
+            const falloff = 1 - (dist / mine.radius) * 0.5;
+            enemy.hp -= mine.damage * falloff;
+            enemy.stunTimer = 1.0; // brief stun
+            if (enemy.hp <= 0) killEnemy(enemy, null);
+        }
+    }
+
+    // Explosion particles
+    for (let i = 0; i < 15; i++) {
+        gameState.particles.push({
+            x: mine.x, y: mine.y,
+            vx: (Math.random() - 0.5) * 200,
+            vy: (Math.random() - 0.5) * 200 - 50,
+            life: 0.6, maxLife: 0.6,
+            color: i % 2 === 0 ? '#ff4400' : '#ffaa00', size: 5
+        });
+    }
+
+    gameState.landmines.splice(index, 1);
+}
+
+function useSupplyDrop() {
+    if (gameState.commandPoints < ABILITY_COSTS.supply) return;
+    gameState.commandPoints -= ABILITY_COSTS.supply;
+
+    gameState.baseHP = Math.min(gameState.baseMaxHP, gameState.baseHP + 200);
+    gameState.money += 300;
+
+    updateHPBar();
+    updateMoneyDisplay();
+    updateCPDisplay();
+
+    // Heal particles at base
+    const basePt = PATH_CELLS[PATH_CELLS.length - 1];
+    const bp = gridCenter(basePt.c, basePt.r);
+    for (let i = 0; i < 12; i++) {
+        gameState.particles.push({
+            x: bp.x + (Math.random() - 0.5) * 40,
+            y: bp.y + (Math.random() - 0.5) * 20,
+            vx: (Math.random() - 0.5) * 30,
+            vy: -30 - Math.random() * 40,
+            life: 1.0, maxLife: 1.0,
+            color: '#4caf50', size: 4
+        });
+    }
+}
+
+function updateAirstrikes(dt) {
+    for (const strike of gameState.airstrikeEffects) {
+        strike.timer -= dt;
+        const progress = 1 - (strike.timer / strike.maxTimer);
+
+        // Deal damage at 30% through animation
+        if (progress >= 0.3 && !strike.damageDealt) {
+            strike.damageDealt = true;
+            for (const enemy of gameState.enemies) {
+                if (enemy.dead) continue;
+                const dist = Math.hypot(enemy.x - strike.x, enemy.y - strike.y);
+                if (dist <= strike.radius) {
+                    const falloff = 1 - (dist / strike.radius) * 0.5;
+                    enemy.hp -= strike.damage * falloff;
+                    if (enemy.hp <= 0) killEnemy(enemy, null);
+                }
+            }
+
+            // Big explosion particles
+            for (let i = 0; i < 20; i++) {
+                gameState.particles.push({
+                    x: strike.x + (Math.random() - 0.5) * strike.radius,
+                    y: strike.y + (Math.random() - 0.5) * strike.radius,
+                    vx: (Math.random() - 0.5) * 150,
+                    vy: (Math.random() - 0.5) * 150 - 80,
+                    life: 0.8, maxLife: 0.8,
+                    color: ['#ff4400', '#ffaa00', '#ff6600', '#fff'][Math.floor(Math.random() * 4)],
+                    size: 3 + Math.random() * 4
+                });
+            }
+        }
+    }
+
+    gameState.airstrikeEffects = gameState.airstrikeEffects.filter(s => s.timer > 0);
+}
+
+// ============================================================
+// TOWER FUSION SYSTEM
+// ============================================================
+
+function getAdjacentTowers(tower) {
+    const adjacent = [];
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    for (const [dc, dr] of dirs) {
+        const nc = tower.col + dc;
+        const nr = tower.row + dr;
+        if (nc >= 0 && nc < GRID_COLS && nr >= 0 && nr < GRID_ROWS) {
+            const neighbor = gameState.towers.find(t => t.col === nc && t.row === nr);
+            if (neighbor && neighbor.type === tower.type && !neighbor.fused && !tower.fused) {
+                adjacent.push(neighbor);
+            }
+        }
+    }
+    return adjacent;
+}
+
+function canFuse(tower) {
+    if (tower.fused) return false;
+    return getAdjacentTowers(tower).length > 0;
+}
+
+function fuseTowers(tower) {
+    const adjacents = getAdjacentTowers(tower);
+    if (adjacents.length === 0) return;
+
+    // Pick the adjacent tower with highest HP destroyed (most experienced)
+    const partner = adjacents.reduce((best, t) =>
+        t.hpDestroyed > best.hpDestroyed ? t : best, adjacents[0]);
+
+    // Combine stats: keep the tower, absorb partner's XP
+    tower.hpDestroyed += partner.hpDestroyed;
+    tower.kills += partner.kills;
+    tower.fused = true;
+    tower.fusionAbilityCooldown = 0;
+    tower.fusionAbilityMaxCD = 30; // 30 second cooldown
+    tower.abilityActive = false;
+    tower.abilityTimer = 0;
+
+    // Remove partner
+    gameState.grid[partner.col][partner.row] = 0;
+    gameState.towers = gameState.towers.filter(t => t !== partner);
+
+    // Fusion particles
+    const p = gridCenter(tower.col, tower.row);
+    for (let i = 0; i < 20; i++) {
+        gameState.particles.push({
+            x: p.x + (Math.random() - 0.5) * 40,
+            y: p.y + (Math.random() - 0.5) * 20 - 10,
+            vx: (Math.random() - 0.5) * 80,
+            vy: -40 - Math.random() * 60,
+            life: 1.0, maxLife: 1.0,
+            color: '#ffd700', size: 4
+        });
+    }
+
+    // Update info panel
+    if (gameState.selectedTower === tower) {
+        updateTowerInfoPanel(tower);
+    }
+}
+
+function activateFusionAbility(tower) {
+    if (!tower.fused || tower.fusionAbilityCooldown > 0 || tower.abilityActive) return;
+
+    const p = gridCenter(tower.col, tower.row);
+    tower.abilityActive = true;
+
+    switch (tower.type) {
+        case 'machinegun':
+            // Bullet Storm: 3s of 4x fire rate
+            tower.abilityTimer = 3;
+            break;
+        case 'sniper':
+            // Headshot: Instant kill <20% HP enemies in range
+            tower.abilityTimer = 0.1;
+            const range = getEffectiveRange(tower);
+            for (const enemy of gameState.enemies) {
+                if (enemy.dead || enemy.isBoss) continue;
+                const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                if (dist <= range && enemy.hp / enemy.maxHP < 0.2) {
+                    killEnemy(enemy, tower);
+                }
+            }
+            break;
+        case 'missile':
+            // Barrage: Fire 8 missiles in all directions
+            tower.abilityTimer = 0.1;
+            for (let i = 0; i < 8; i++) {
+                const angle = (Math.PI * 2 / 8) * i;
+                const speed = 300;
+                gameState.projectiles.push({
+                    x: p.x, y: p.y - 18,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    damage: getEffectiveDamage(tower) * 1.5,
+                    splash: 60,
+                    stun: 0,
+                    color: '#ff5722',
+                    tower,
+                    lifetime: 2
+                });
+            }
+            break;
+        case 'flamethrower':
+            // Inferno: 360° flame ring for 3s
+            tower.abilityTimer = 3;
+            break;
+        case 'artillery':
+            // Carpet Bomb: 5 explosions along path
+            tower.abilityTimer = 0.1;
+            for (let i = 0; i < 5; i++) {
+                const pathIdx = Math.floor(Math.random() * pathWaypoints.length);
+                const wp = pathWaypoints[pathIdx];
+                setTimeout(() => {
+                    gameState.airstrikeEffects.push({
+                        x: wp.x, y: wp.y,
+                        radius: 50,
+                        timer: 1.0,
+                        maxTimer: 1.0,
+                        damage: getEffectiveDamage(tower),
+                        damageDealt: false
+                    });
+                }, i * 200);
+            }
+            break;
+        case 'emp':
+            // EMP Pulse: Stun ALL enemies for 4s
+            tower.abilityTimer = 0.1;
+            for (const enemy of gameState.enemies) {
+                if (!enemy.dead) {
+                    enemy.stunTimer = 4;
+                }
+            }
+            // Visual pulse
+            for (let i = 0; i < 15; i++) {
+                gameState.particles.push({
+                    x: p.x + (Math.random() - 0.5) * 200,
+                    y: p.y + (Math.random() - 0.5) * 100,
+                    vx: (Math.random() - 0.5) * 100,
+                    vy: (Math.random() - 0.5) * 100,
+                    life: 0.8, maxLife: 0.8,
+                    color: '#29b6f6', size: 5
+                });
+            }
+            break;
+        case 'slowdown':
+            // Freeze: Stop all enemies in range for 3s
+            tower.abilityTimer = 3;
+            break;
+    }
+
+    tower.fusionAbilityCooldown = tower.fusionAbilityMaxCD;
+}
+
+function updateFusionAbilities(dt) {
+    for (const tower of gameState.towers) {
+        if (!tower.fused) continue;
+
+        // Cooldown
+        if (tower.fusionAbilityCooldown > 0) {
+            tower.fusionAbilityCooldown -= dt;
+        }
+
+        // Active ability effects
+        if (tower.abilityActive && tower.abilityTimer > 0) {
+            tower.abilityTimer -= dt;
+            const p = gridCenter(tower.col, tower.row);
+            const range = getEffectiveRange(tower);
+
+            if (tower.type === 'flamethrower') {
+                // Inferno: damage all enemies in range
+                for (const enemy of gameState.enemies) {
+                    if (enemy.dead) continue;
+                    const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                    if (dist <= range * 0.8) {
+                        const dmg = getEffectiveDamage(tower) * 0.5 * dt;
+                        enemy.hp -= dmg;
+                        tower.hpDestroyed += dmg;
+                        if (enemy.hp <= 0) killEnemy(enemy, tower);
+                    }
+                }
+            } else if (tower.type === 'slowdown') {
+                // Freeze: all enemies in range are frozen
+                for (const enemy of gameState.enemies) {
+                    if (enemy.dead) continue;
+                    const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                    if (dist <= range) {
+                        enemy.stunTimer = 0.2;
+                    }
+                }
+            }
+
+            if (tower.abilityTimer <= 0) {
+                tower.abilityActive = false;
+            }
+        }
+    }
+}
+
+// ============================================================
+// TOWER LOGIC
+// ============================================================
+
+function placeTower(col, row, type) {
+    const def = TOWER_DEFS[type];
+    if (gameState.money < def.cost) return false;
+    if (gameState.grid[col][row] !== 0) return false;
+
+    gameState.money -= def.cost;
+    gameState.grid[col][row] = 2;
+
+    const tower = {
+        col, row, type,
+        fireCooldown: 0,
+        kills: 0,
+        hpDestroyed: 0,
+        divisionLevel: 0,
+        target: null,
+        targetEnemy: null,
+        fused: false,
+        fusionAbilityCooldown: 0,
+        fusionAbilityMaxCD: 30,
+        abilityActive: false,
+        abilityTimer: 0,
+        hp: def.towerHP,
+        maxHP: def.towerHP
+    };
+    gameState.towers.push(tower);
+    playSound('place');
+    updateMoneyDisplay();
+    updateTowerButtons();
+    return true;
+}
+
+function sellTower(tower) {
+    playSound('sell');
+    const def = TOWER_DEFS[tower.type];
+    const fusionBonus = tower.fused ? 1.5 : 1;
+    const refund = Math.floor(def.cost * SELL_REFUND * fusionBonus);
+    gameState.money += refund;
+    gameState.grid[tower.col][tower.row] = 0;
+    gameState.towers = gameState.towers.filter(t => t !== tower);
+    gameState.selectedTower = null;
+    document.getElementById('tower-info').classList.add('hidden');
+    updateMoneyDisplay();
+    updateTowerButtons();
+}
+
+// Division system removed - towers upgrade via rank only
+
+function findTarget(tower) {
+    const p = gridCenter(tower.col, tower.row);
+    const range = getEffectiveRange(tower);
+    let bestEnemy = null;
+    let bestProgress = -1;
+
+    for (const enemy of gameState.enemies) {
+        if (enemy.dead) continue;
+        const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+        if (dist > range) continue;
+
+        const ep = enemy.path || pathWaypoints;
+        const progress = enemy.waypointIdx + (1 - Math.hypot(
+            ep[Math.min(enemy.waypointIdx + 1, ep.length - 1)].x - enemy.x,
+            ep[Math.min(enemy.waypointIdx + 1, ep.length - 1)].y - enemy.y
+        ) / 100);
+
+        if (progress > bestProgress) {
+            bestProgress = progress;
+            bestEnemy = enemy;
+        }
+    }
+    return bestEnemy;
+}
+
+function updateTowers(dt) {
+    for (const tower of gameState.towers) {
+        const def = TOWER_DEFS[tower.type];
+        const p = gridCenter(tower.col, tower.row);
+
+        // Handle repair timer
+        if (tower.repairing) {
+            tower.repairTimer -= dt;
+            // Gradually restore HP during repair
+            const progress = 1 - (tower.repairTimer / tower.repairDuration);
+            tower.hp = tower.repairStartHP + (tower.repairTargetHP - tower.repairStartHP) * Math.min(1, progress);
+            if (tower.repairTimer <= 0) {
+                tower.hp = tower.repairTargetHP;
+                tower.repairing = false;
+                tower.repairTimer = 0;
+                // Repair complete particles
+                for (let i = 0; i < 8; i++) {
+                    gameState.particles.push({
+                        x: p.x + (Math.random() - 0.5) * 20,
+                        y: p.y + (Math.random() - 0.5) * 10,
+                        vx: (Math.random() - 0.5) * 30,
+                        vy: -20 - Math.random() * 30,
+                        life: 0.5, maxLife: 0.5,
+                        color: '#4caf50', size: 3
+                    });
+                }
+                if (gameState.selectedTower === tower) updateTowerInfoPanel(tower);
+            }
+            continue; // Tower can't function during repair
+        }
+
+        // Slowdown tower - passive aura
+        if (tower.type === 'slowdown') {
+            const range = getEffectiveRange(tower);
+            for (const enemy of gameState.enemies) {
+                if (enemy.dead) continue;
+                const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                if (dist <= range) {
+                    enemy.slowTimer = 0.5;
+                    enemy.slowAmount = 0.5;
+                }
+            }
+            tower.target = null;
+            continue;
+        }
+
+        tower.fireCooldown -= dt;
+
+        // Fused machinegun bullet storm: 4x fire rate
+        let fireRateMod = 1;
+        if (tower.fused && tower.type === 'machinegun' && tower.abilityActive) {
+            fireRateMod = 4;
+        }
+
+        const target = findTarget(tower);
+
+        if (target) {
+            tower.target = { x: target.x, y: target.y };
+            tower.targetEnemy = target;
+
+            if (tower.fireCooldown <= 0) {
+                tower.fireCooldown = getEffectiveFireRate(tower) / fireRateMod;
+
+                // Tower fire sound
+                if (tower.type === 'machinegun') playSoundThrottled('mg', 0.06);
+                else if (tower.type === 'sniper') playSoundThrottled('sniper', 0.3);
+                else if (tower.type === 'missile' || tower.type === 'artillery') playSoundThrottled('missile', 0.15);
+                else if (tower.type === 'emp') playSoundThrottled('emp', 0.2);
+                else if (tower.type === 'flamethrower') playSoundThrottled('flame', 0.08);
+
+                // Flamethrower - instant damage in cone
+                if (tower.type === 'flamethrower') {
+                    const range = getEffectiveRange(tower);
+                    const angle = Math.atan2(target.y - p.y, target.x - p.x);
+
+                    for (const enemy of gameState.enemies) {
+                        if (enemy.dead) continue;
+                        const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                        if (dist > range) continue;
+
+                        const enemyAngle = Math.atan2(enemy.y - p.y, enemy.x - p.x);
+                        let angleDiff = Math.abs(enemyAngle - angle);
+                        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+                        if (angleDiff < 0.5) {
+                            const dmg = getEffectiveDamage(tower);
+                            enemy.hp -= dmg;
+                            tower.hpDestroyed += dmg;
+                            enemy.dotTimer = 2;
+                            enemy.dotDamage = def.dot;
+                            enemy.dotSource = tower;
+
+                            if (enemy.hp <= 0) killEnemy(enemy, tower);
+                        }
+                    }
+                } else {
+                    // Fire projectile
+                    const dx = target.x - p.x;
+                    const dy = target.y - (p.y - 14);
+                    const dist = Math.hypot(dx, dy);
+                    const speed = def.projectileSpeed;
+
+                    gameState.projectiles.push({
+                        x: p.x, y: p.y - 14,
+                        vx: (dx / dist) * speed,
+                        vy: (dy / dist) * speed,
+                        damage: getEffectiveDamage(tower),
+                        splash: def.splash,
+                        stun: def.stun,
+                        color: def.projectileColor,
+                        tower,
+                        lifetime: 3
+                    });
+                }
+            }
+        } else {
+            tower.target = null;
+            tower.targetEnemy = null;
+        }
+    }
+}
+
+// ============================================================
+// PROJECTILE LOGIC
+// ============================================================
+
+function updateProjectiles(dt) {
+    for (const proj of gameState.projectiles) {
+        proj.x += proj.vx * dt;
+        proj.y += proj.vy * dt;
+        proj.lifetime -= dt;
+
+        // Check collision with enemies
+        for (const enemy of gameState.enemies) {
+            if (enemy.dead) continue;
+            const dist = Math.hypot(enemy.x - proj.x, enemy.y - proj.y);
+
+            if (dist < enemy.size + 4) {
+                // Direct hit
+                if (proj.splash > 0) {
+                    for (const e of gameState.enemies) {
+                        if (e.dead) continue;
+                        const sDist = Math.hypot(e.x - proj.x, e.y - proj.y);
+                        if (sDist <= proj.splash) {
+                            const falloff = 1 - (sDist / proj.splash) * 0.5;
+                            const dmg = proj.damage * falloff;
+                            e.hp -= dmg;
+                            proj.tower.hpDestroyed += dmg;
+                            if (e.hp <= 0) killEnemy(e, proj.tower);
+                        }
+                    }
+                    for (let i = 0; i < 6; i++) {
+                        gameState.particles.push({
+                            x: proj.x, y: proj.y,
+                            vx: (Math.random() - 0.5) * 120,
+                            vy: (Math.random() - 0.5) * 120,
+                            life: 0.3, maxLife: 0.3,
+                            color: '#ff6600', size: 4
+                        });
+                    }
+                } else {
+                    const dmg = proj.damage;
+                    enemy.hp -= dmg;
+                    proj.tower.hpDestroyed += dmg;
+
+                    if (proj.stun > 0) {
+                        enemy.stunTimer = proj.stun;
+                    }
+
+                    if (enemy.hp <= 0) killEnemy(enemy, proj.tower);
+                }
+
+                proj.lifetime = 0;
+                break;
+            }
+        }
+    }
+
+    gameState.projectiles = gameState.projectiles.filter(p => p.lifetime > 0);
+}
+
+// ============================================================
+// PARTICLE SYSTEM
+// ============================================================
+
+function updateParticles(dt) {
+    for (const p of gameState.particles) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 100 * dt; // gravity
+        p.life -= dt;
+    }
+    gameState.particles = gameState.particles.filter(p => p.life > 0);
+}
+
+// ============================================================
+// WAVE SYSTEM
+// ============================================================
+
+function generateWave(waveNum) {
+    const enemies = [];
+    const isBossWave = waveNum % 5 === 0;
+
+    const infantryCount = Math.floor(6 + waveNum * 2);
+    const jeepCount = waveNum >= 2 ? Math.floor(1 + waveNum * 0.7) : 0;
+    const tankCount = waveNum >= 4 ? Math.floor(waveNum * 0.4) : 0;
+    // Enemy artillery starts appearing at wave 3, scales up faster
+    const artCount = waveNum >= 3 ? Math.min(3, 1 + Math.floor((waveNum - 3) * 0.2)) : 0;
+
+    for (let i = 0; i < infantryCount; i++) enemies.push({ type: 'infantry', isBoss: false });
+    for (let i = 0; i < jeepCount; i++) enemies.push({ type: 'jeep', isBoss: false });
+    for (let i = 0; i < tankCount; i++) enemies.push({ type: 'tank', isBoss: false });
+    for (let i = 0; i < artCount; i++) enemies.push({ type: 'enemyArt', isBoss: false });
+
+    if (isBossWave) {
+        const bossType = waveNum >= 20 ? 'tank' : waveNum >= 10 ? 'jeep' : 'tank';
+        enemies.push({ type: bossType, isBoss: true });
+    }
+
+    // Shuffle
+    for (let i = enemies.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [enemies[i], enemies[j]] = [enemies[j], enemies[i]];
+    }
+
+    // Put boss at end
+    if (isBossWave) {
+        const bossIdx = enemies.findIndex(e => e.isBoss);
+        if (bossIdx !== -1) {
+            const boss = enemies.splice(bossIdx, 1)[0];
+            enemies.push(boss);
+        }
+    }
+
+    return enemies;
+}
+
+function startWave() {
+    playSound('wave_start');
+    gameState.wave++;
+    gameState.waveActive = true;
+    gameState.autoWaveTimer = 0;
+    const newEnemies = generateWave(gameState.wave);
+    gameState.enemiesToSpawn = gameState.enemiesToSpawn.concat(newEnemies);
+    gameState.spawnInterval = Math.max(0.2, 0.45 - gameState.wave * 0.01);
+
+    document.getElementById('wave-number').textContent = gameState.wave;
+
+}
+
+function updateWave(dt) {
+    // Spawn enemies from queue
+    if (gameState.enemiesToSpawn.length > 0) {
+        gameState.spawnTimer -= dt;
+        if (gameState.spawnTimer <= 0) {
+            const enemyDef = gameState.enemiesToSpawn.shift();
+            spawnEnemy(enemyDef.type, enemyDef.isBoss, gameState.wave);
+            gameState.spawnTimer = gameState.spawnInterval;
+        }
+    }
+
+    // Track wave active state
+    if (gameState.waveActive && gameState.enemiesToSpawn.length === 0 && gameState.enemies.length === 0) {
+        gameState.waveActive = false;
+        // Wave completion bonus
+        const bonus = 40 + gameState.wave * 10;
+        gameState.money += bonus;
+        updateMoneyDisplay();
+    }
+
+    // Auto-start next wave after 3s countdown
+    if (!gameState.waveActive && gameState.enemiesToSpawn.length === 0 && gameState.enemies.length === 0 && gameState.wave > 0) {
+        gameState.autoWaveTimer += dt;
+        const remaining = Math.ceil(3 - gameState.autoWaveTimer);
+        if (remaining > 0) {
+            document.getElementById('auto-start-timer').textContent = `Next: ${remaining}s`;
+        } else {
+            document.getElementById('auto-start-timer').textContent = '';
+            startWave();
+        }
+    } else {
+        gameState.autoWaveTimer = 0;
+        document.getElementById('auto-start-timer').textContent = '';
+    }
+}
+
+// ============================================================
+// UI UPDATES
+// ============================================================
+
+function updateMoneyDisplay() {
+    document.getElementById('money-amount').textContent = gameState.money;
+}
+
+function updateCPDisplay() {
+    document.getElementById('cp-amount').textContent = gameState.commandPoints;
+    // Update ability button states
+    document.querySelectorAll('.ability-btn').forEach(btn => {
+        const ability = btn.dataset.ability;
+        const cost = ABILITY_COSTS[ability];
+        if (gameState.commandPoints < cost) {
+            btn.classList.add('disabled');
+        } else {
+            btn.classList.remove('disabled');
+        }
+    });
+}
+
+function updatePOWDisplay() {
+    document.getElementById('pow-amount').textContent = gameState.totalPOWs;
+}
+
+function updateHPBar() {
+    const pct = (gameState.baseHP / gameState.baseMaxHP) * 100;
+    document.getElementById('base-hp-bar').style.width = pct + '%';
+    document.getElementById('base-hp-text').textContent =
+        `${Math.ceil(gameState.baseHP)} / ${gameState.baseMaxHP}`;
+}
+
+function isTowerUnlocked(type) {
+    const def = TOWER_DEFS[type];
+    return gameState.totalHPDestroyed >= def.unlockHP;
+}
+
+function updateTowerButtons() {
+    document.querySelectorAll('.tower-btn').forEach(btn => {
+        const type = btn.dataset.tower;
+        if (!type) return;
+        const def = TOWER_DEFS[type];
+
+        if (!isTowerUnlocked(type)) {
+            btn.classList.add('disabled');
+            btn.classList.add('locked');
+            // Show unlock requirement
+            const costEl = btn.querySelector('.tower-btn-cost');
+            const hpLabel = def.unlockHP >= 1000 ? `${Math.floor(def.unlockHP / 1000)}K` : def.unlockHP;
+            if (costEl) costEl.textContent = `🔒 ${hpLabel} HP`;
+        } else if (gameState.money < def.cost) {
+            btn.classList.add('disabled');
+            btn.classList.remove('locked');
+            const costEl = btn.querySelector('.tower-btn-cost');
+            if (costEl) costEl.textContent = `$${def.cost}`;
+        } else {
+            btn.classList.remove('disabled');
+            btn.classList.remove('locked');
+            const costEl = btn.querySelector('.tower-btn-cost');
+            if (costEl) costEl.textContent = `$${def.cost}`;
+        }
+    });
+}
+
+function updateTowerInfoPanel(tower) {
+    if (!tower) {
+        document.getElementById('tower-info').classList.add('hidden');
+        return;
+    }
+
+    const def = TOWER_DEFS[tower.type];
+    const rank = getRank(tower);
+    const nextRank = getNextRank(tower);
+
+    const infoPanel = document.getElementById('tower-info');
+    infoPanel.classList.remove('hidden');
+
+    // Position panel near the tower on canvas
+    const rect = canvas.getBoundingClientRect();
+    const center = gridCenter(tower.col, tower.row);
+    // Convert canvas coords to CSS coords
+    const cssX = rect.left + (center.x / canvas.width) * rect.width;
+    const cssY = rect.top + (center.y / canvas.height) * rect.height;
+    const panelWidth = 260;
+    const panelHeight = infoPanel.offsetHeight || 350;
+    // Try to place to the right of the tower, fall back to left if off-screen
+    let left = cssX + 30;
+    let top = cssY - panelHeight / 2;
+    if (left + panelWidth > window.innerWidth) {
+        left = cssX - panelWidth - 30;
+    }
+    // Clamp vertically
+    top = Math.max(55, Math.min(window.innerHeight - panelHeight - 10, top));
+    left = Math.max(5, left);
+    infoPanel.style.left = left + 'px';
+    infoPanel.style.top = top + 'px';
+    infoPanel.style.right = 'auto';
+
+    const fusionName = tower.fused ? FUSION_BONUSES[tower.type].name : def.name;
+    document.getElementById('info-title').textContent = fusionName;
+    document.getElementById('info-combined-title').textContent =
+        getCombinedTitle(tower) + ' ' + fusionName;
+
+    // Rank progress
+    document.getElementById('info-rank-label').textContent = `Rank: ${rank.name}`;
+    if (nextRank) {
+        const progress = ((tower.hpDestroyed - rank.hpReq) / (nextRank.hpReq - rank.hpReq)) * 100;
+        document.getElementById('rank-bar').style.width = Math.min(100, progress) + '%';
+        document.getElementById('rank-progress-text').textContent =
+            `${Math.floor(tower.hpDestroyed)} / ${nextRank.hpReq} HP`;
+    } else {
+        document.getElementById('rank-bar').style.width = '100%';
+        document.getElementById('rank-progress-text').textContent = 'MAX RANK';
+    }
+
+    // Hide division section
+    const divSection = document.getElementById('info-division-section');
+    if (divSection) divSection.style.display = 'none';
+
+    // Stats
+    document.getElementById('stat-damage').textContent = tower.type === 'slowdown' ? 'N/A' :
+        getEffectiveDamage(tower).toFixed(1);
+    document.getElementById('stat-firerate').textContent = tower.type === 'slowdown' ? 'Passive' :
+        getEffectiveFireRate(tower).toFixed(2) + 's';
+    document.getElementById('stat-range').textContent = Math.floor(getEffectiveRange(tower));
+    document.getElementById('stat-kills').textContent = tower.kills;
+    document.getElementById('stat-hpdestroyed').textContent = Math.floor(tower.hpDestroyed);
+
+    // Tower HP
+    const towerHPEl = document.getElementById('stat-towerhp');
+    if (towerHPEl) {
+        towerHPEl.textContent = `${Math.ceil(tower.hp)} / ${tower.maxHP}`;
+        towerHPEl.style.color = tower.hp / tower.maxHP > 0.5 ? '#88ccff' : tower.hp / tower.maxHP > 0.25 ? '#ff9800' : '#f44336';
+    }
+
+    // Repair button (show only when damaged)
+    const repairBtn = document.getElementById('repair-tower-btn');
+    if (tower.repairing) {
+        repairBtn.classList.remove('hidden');
+        const progress = Math.round((1 - tower.repairTimer / tower.repairDuration) * 100);
+        document.getElementById('repair-cost').textContent = `Repairing... ${progress}%`;
+        repairBtn.style.opacity = '0.5';
+        repairBtn.style.cursor = 'not-allowed';
+    } else if (tower.hp < tower.maxHP) {
+        const missingHP = tower.maxHP - tower.hp;
+        const repairCost = Math.ceil(missingHP * 0.125); // $0.50 per HP
+        repairBtn.classList.remove('hidden');
+        document.getElementById('repair-cost').textContent = repairCost;
+        if (gameState.money < repairCost) {
+            repairBtn.style.opacity = '0.5';
+            repairBtn.style.cursor = 'not-allowed';
+        } else {
+            repairBtn.style.opacity = '1';
+            repairBtn.style.cursor = 'pointer';
+        }
+    } else {
+        repairBtn.classList.add('hidden');
+    }
+
+    // Sell
+    const fusionBonus = tower.fused ? 1.5 : 1;
+    document.getElementById('sell-amount').textContent = Math.floor(def.cost * SELL_REFUND * fusionBonus);
+
+    // Fuse button
+    const fuseBtn = document.getElementById('fuse-tower-btn');
+    if (canFuse(tower)) {
+        fuseBtn.classList.remove('hidden');
+        const fuseCost = TOWER_DEFS[tower.type].cost;
+        fuseBtn.textContent = `Fuse Adjacent Tower ($${fuseCost})`;
+        fuseBtn.style.opacity = gameState.money >= fuseCost ? '1' : '0.5';
+    } else if (tower.fused) {
+        // Show ability button instead
+        fuseBtn.classList.remove('hidden');
+        const cd = tower.fusionAbilityCooldown;
+        if (cd > 0) {
+            fuseBtn.textContent = `Ability (${Math.ceil(cd)}s cooldown)`;
+            fuseBtn.style.opacity = '0.5';
+        } else {
+            fuseBtn.textContent = `Use: ${FUSION_BONUSES[tower.type].ability}`;
+            fuseBtn.style.opacity = '1';
+        }
+    } else {
+        fuseBtn.classList.add('hidden');
+    }
+}
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+
+function update(dt) {
+    if (!gameState.running) return;
+
+    updateWave(dt);
+    updateTowers(dt);
+    updateEnemies(dt);
+    updateEnemyShooting(dt);
+    updateEnemyArtillery(dt);
+    updateAllies(dt);
+    updateProjectiles(dt);
+    updateParticles(dt);
+    updateAirstrikes(dt);
+    updateFusionAbilities(dt);
+
+    // Update info panel if a tower is selected
+    if (gameState.selectedTower) {
+        updateTowerInfoPanel(gameState.selectedTower);
+    }
+
+    updateTowerButtons();
+    updateMoneyDisplay();
+    updateCPDisplay();
+}
+
+function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Background
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    drawMap();
+    drawHoverPreview();
+    drawTowers();
+    drawFlamethrowerBeams();
+    drawEnemies();
+    drawAllies();
+    drawProjectiles();
+    drawEnemyProjectiles();
+    drawAirstrikeEffects();
+    drawParticles();
+}
+
+const TARGET_FPS = 30;
+const FRAME_INTERVAL = 1000 / TARGET_FPS;
+let lastLoopTime = Date.now();
+
+function gameLoop() {
+    const now = Date.now();
+    const dt = Math.min((now - lastLoopTime) / 1000, 0.05);
+    lastLoopTime = now;
+
+    update(dt);
+    render();
+}
+
+function gameOver() {
+    gameState.running = false;
+    playSound('game_over');
+    document.getElementById('game-over').classList.remove('hidden');
+    document.getElementById('final-wave').textContent = gameState.wave;
+    document.getElementById('final-kills').textContent = gameState.totalKills;
+}
+
+function startGame() {
+    gameState = {
+        running: true,
+        money: 2500,
+        baseHP: BASE_MAX_HP,
+        baseMaxHP: BASE_MAX_HP,
+        wave: 0,
+        waveActive: false,
+        enemies: [],
+        towers: [],
+        projectiles: [],
+        particles: [],
+        selectedTowerType: null,
+        selectedTower: null,
+        hoverGrid: null,
+        autoWaveTimer: 0,
+        totalKills: 0,
+        enemiesToSpawn: [],
+        spawnTimer: 0,
+        spawnInterval: 0.5,
+        lastTime: performance.now(),
+        grid: [],
+        commandPoints: 0,
+        selectedAbility: null,
+        landmines: [],
+        airstrikeEffects: [],
+        allies: [],
+        totalPOWs: 0,
+        fusionEffects: [],
+        totalHPDestroyed: 0,
+        enemyProjectiles: [],
+        blastTiles: [],
+        destroyedTiles: new Set()
+    };
+    // Reset pathSet to original BEFORE initGrid so blasted tiles are cleared
+    pathSet.clear();
+    PATH_CELLS.forEach(p => pathSet.add(`${p.c},${p.r}`));
+    pathWaypoints = PATH_CELLS.map(p => gridCenter(p.c, p.r));
+    shortcutWaypoints = null;
+    initGrid();
+    recalcPathWaypoints();
+    updateMoneyDisplay();
+    updateHPBar();
+    updateTowerButtons();
+    updateCPDisplay();
+    updatePOWDisplay();
+    document.getElementById('wave-number').textContent = '0';
+    document.getElementById('tower-info').classList.add('hidden');
+    document.getElementById('game-over').classList.add('hidden');
+    document.getElementById('start-screen').classList.add('hidden');
+
+    document.getElementById('next-wave-btn').classList.remove('disabled');
+
+    // Reset ability selection UI
+    document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
+}
+
+// ============================================================
+// INPUT HANDLING
+// ============================================================
+
+canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+    gameState.hoverGrid = screenToGrid(mx, my);
+});
+
+canvas.addEventListener('click', (e) => {
+    if (!gameState.running) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const grid = screenToGrid(mx, my);
+
+    // Commander ability targeting
+    if (gameState.selectedAbility) {
+        const ability = gameState.selectedAbility;
+        if (ability === 'airstrike') {
+            const p = gridCenter(grid.col, grid.row);
+            useAirstrike(p.x, p.y);
+        } else if (ability === 'landmine') {
+            useLandmine(grid.col, grid.row);
+        }
+        gameState.selectedAbility = null;
+        document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
+        return;
+    }
+
+    if (grid.col < 0 || grid.col >= GRID_COLS || grid.row < 0 || grid.row >= GRID_ROWS) {
+        // Clicked outside grid - deselect
+        gameState.selectedTower = null;
+        gameState.selectedTowerType = null;
+        document.getElementById('tower-info').classList.add('hidden');
+        document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+        return;
+    }
+
+    // If placing a tower
+    if (gameState.selectedTowerType) {
+        if (placeTower(grid.col, grid.row, gameState.selectedTowerType)) {
+            // Keep the tower type selected for rapid placement
+        }
+        return;
+    }
+
+    // Check if clicking on an existing tower
+    const clickedTower = gameState.towers.find(t => t.col === grid.col && t.row === grid.row);
+    if (clickedTower) {
+        gameState.selectedTower = clickedTower;
+        updateTowerInfoPanel(clickedTower);
+    } else {
+        gameState.selectedTower = null;
+        document.getElementById('tower-info').classList.add('hidden');
+    }
+});
+
+canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    gameState.selectedTowerType = null;
+    gameState.selectedTower = null;
+    gameState.selectedAbility = null;
+    document.getElementById('tower-info').classList.add('hidden');
+    document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+    document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
+});
+
+// Tower selection buttons
+document.querySelectorAll('.tower-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const type = btn.dataset.tower;
+        if (!type) return;
+        if (btn.classList.contains('disabled')) return;
+
+        // Clear ability selection
+        gameState.selectedAbility = null;
+        document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
+
+        if (gameState.selectedTowerType === type) {
+            gameState.selectedTowerType = null;
+            btn.classList.remove('selected');
+        } else {
+            gameState.selectedTowerType = type;
+            gameState.selectedTower = null;
+            document.getElementById('tower-info').classList.add('hidden');
+            document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+        }
+    });
+});
+
+// Commander Ability buttons
+document.querySelectorAll('.ability-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!gameState.running) return;
+        const ability = btn.dataset.ability;
+        const cost = ABILITY_COSTS[ability];
+
+        if (gameState.commandPoints < cost) return;
+
+        // Supply drop is instant (no targeting)
+        if (ability === 'supply') {
+            useSupplyDrop();
+            return;
+        }
+
+        // Clear tower selection
+        gameState.selectedTowerType = null;
+        document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+
+        // Toggle ability selection
+        if (gameState.selectedAbility === ability) {
+            gameState.selectedAbility = null;
+            btn.classList.remove('selected');
+        } else {
+            gameState.selectedAbility = ability;
+            document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+        }
+    });
+});
+
+// Next wave button - ALWAYS active during gameplay
+document.getElementById('next-wave-btn').addEventListener('click', () => {
+    if (!gameState.running) return;
+    startWave();
+});
+
+// Tower info panel buttons
+document.getElementById('info-close').addEventListener('click', () => {
+    gameState.selectedTower = null;
+    document.getElementById('tower-info').classList.add('hidden');
+});
+
+document.getElementById('repair-tower-btn').addEventListener('click', () => {
+    if (!gameState.selectedTower) return;
+    const tower = gameState.selectedTower;
+    if (tower.hp >= tower.maxHP) return;
+    if (tower.repairing) return; // Already repairing
+    const missingHP = tower.maxHP - tower.hp;
+    const repairCost = Math.ceil(missingHP * 0.125);
+    if (gameState.money < repairCost) return;
+
+    gameState.money -= repairCost;
+    // Start timed repair: 1s per 20 HP missing, min 1s, max 5s
+    const repairTime = Math.max(1, Math.min(5, missingHP / 20));
+    tower.repairing = true;
+    tower.repairTimer = repairTime;
+    tower.repairDuration = repairTime;
+    tower.repairTargetHP = tower.maxHP;
+    tower.repairStartHP = tower.hp;
+    updateMoneyDisplay();
+    updateTowerInfoPanel(tower);
+});
+
+document.getElementById('sell-tower-btn').addEventListener('click', () => {
+    if (gameState.selectedTower) {
+        sellTower(gameState.selectedTower);
+    }
+});
+
+// Fuse / Ability button
+document.getElementById('fuse-tower-btn').addEventListener('click', () => {
+    if (!gameState.selectedTower) return;
+    const tower = gameState.selectedTower;
+
+    if (tower.fused) {
+        // Use ability
+        activateFusionAbility(tower);
+    } else if (canFuse(tower)) {
+        const fuseCost = TOWER_DEFS[tower.type].cost;
+        if (gameState.money < fuseCost) return;
+        gameState.money -= fuseCost;
+        updateMoneyDisplay();
+        fuseTowers(tower);
+    }
+    updateTowerInfoPanel(tower);
+});
+
+// Start / Restart
+document.getElementById('start-btn').addEventListener('click', () => {
+    initAudio();
+    startGame();
+});
+
+document.getElementById('restart-btn').addEventListener('click', () => {
+    initAudio();
+    startGame();
+});
+
+// Keyboard shortcuts
+window.addEventListener('keydown', (e) => {
+    if (!gameState.running) return;
+
+    const keys = ['1', '2', '3', '4', '5', '6', '7'];
+    const types = ['machinegun', 'slowdown', 'sniper', 'flamethrower', 'missile', 'emp', 'artillery'];
+    const idx = keys.indexOf(e.key);
+
+    if (idx !== -1) {
+        const type = types[idx];
+        const def = TOWER_DEFS[type];
+        if (isTowerUnlocked(type) && gameState.money >= def.cost) {
+            gameState.selectedAbility = null;
+            document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
+
+            if (gameState.selectedTowerType === type) {
+                gameState.selectedTowerType = null;
+                document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+            } else {
+                gameState.selectedTowerType = type;
+                gameState.selectedTower = null;
+                document.getElementById('tower-info').classList.add('hidden');
+                document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+                document.querySelector(`[data-tower="${type}"]`).classList.add('selected');
+            }
+        }
+    }
+
+    // Ability hotkeys: Q, W, E
+    if (e.key === 'q' || e.key === 'Q') {
+        const cost = ABILITY_COSTS.airstrike;
+        if (gameState.commandPoints >= cost) {
+            gameState.selectedAbility = 'airstrike';
+            gameState.selectedTowerType = null;
+            document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+            document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
+            document.querySelector('[data-ability="airstrike"]').classList.add('selected');
+        }
+    }
+    if (e.key === 'w' || e.key === 'W') {
+        const cost = ABILITY_COSTS.landmine;
+        if (gameState.commandPoints >= cost) {
+            gameState.selectedAbility = 'landmine';
+            gameState.selectedTowerType = null;
+            document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+            document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
+            document.querySelector('[data-ability="landmine"]').classList.add('selected');
+        }
+    }
+    if (e.key === 'e' || e.key === 'E') {
+        if (gameState.commandPoints >= ABILITY_COSTS.supply) {
+            useSupplyDrop();
+        }
+    }
+
+    if (e.key === 'Escape') {
+        gameState.selectedTowerType = null;
+        gameState.selectedTower = null;
+        gameState.selectedAbility = null;
+        document.getElementById('tower-info').classList.add('hidden');
+        document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+        document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
+    }
+
+    if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        startWave();
+    }
+});
+
+// ---- Initialize ----
+initGrid();
+recalcPathWaypoints();
+setInterval(gameLoop, FRAME_INTERVAL);

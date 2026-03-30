@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tower Defense - Military Warfare Edition</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- HUD -->
+        <div id="hud">
+            <div id="hud-left">
+                <div id="base-hp-container">
+                    <span id="base-hp-label">BASE HP</span>
+                    <div id="base-hp-bar-bg">
+                        <div id="base-hp-bar"></div>
+                        <span id="base-hp-text">100 / 100</span>
+                    </div>
+                </div>
+            </div>
+            <div id="hud-center">
+                <div id="wave-counter">WAVE <span id="wave-number">0</span></div>
+                <div id="cp-display">CP: <span id="cp-amount">0</span></div>
+            </div>
+            <div id="hud-right">
+                <div id="money-display">$<span id="money-amount">2500</span></div>
+                <div id="surrender-count">POWs: <span id="pow-amount">0</span></div>
+            </div>
+        </div>
+
+        <!-- Commander Abilities Bar -->
+        <div id="ability-bar">
+            <div class="ability-btn" data-ability="airstrike" title="Airstrike: Massive AoE damage (150 CP)">
+                <div class="ability-icon airstrike-icon">&#9992;</div>
+                <div class="ability-name">Airstrike</div>
+                <div class="ability-cost">150 CP</div>
+            </div>
+            <div class="ability-btn" data-ability="landmine" title="Landmine: Place trap on path (80 CP)">
+                <div class="ability-icon landmine-icon">&#9881;</div>
+                <div class="ability-name">Landmine</div>
+                <div class="ability-cost">80 CP</div>
+            </div>
+            <div class="ability-btn" data-ability="supply" title="Supply Drop: Heal base +200 HP & +$300 (200 CP)">
+                <div class="ability-icon supply-icon">&#9768;</div>
+                <div class="ability-name">Supply</div>
+                <div class="ability-cost">200 CP</div>
+            </div>
+        </div>
+
+        <!-- Tower Selection Panel -->
+        <div id="tower-panel">
+            <div class="tower-btn" data-tower="machinegun">
+                <div class="tower-icon mg-icon"></div>
+                <div class="tower-btn-name">Machine Gun</div>
+                <div class="tower-btn-cost">$250</div>
+            </div>
+            <div class="tower-btn" data-tower="slowdown">
+                <div class="tower-icon slow-icon"></div>
+                <div class="tower-btn-name">Slowdown</div>
+                <div class="tower-btn-cost">$750</div>
+            </div>
+            <div class="tower-btn" data-tower="sniper">
+                <div class="tower-icon sniper-icon"></div>
+                <div class="tower-btn-name">Sniper</div>
+                <div class="tower-btn-cost">🔒 3K HP</div>
+            </div>
+            <div class="tower-btn" data-tower="flamethrower">
+                <div class="tower-icon flame-icon"></div>
+                <div class="tower-btn-name">Flamethrower</div>
+                <div class="tower-btn-cost">🔒 16K HP</div>
+            </div>
+            <div class="tower-btn" data-tower="missile">
+                <div class="tower-icon missile-icon"></div>
+                <div class="tower-btn-name">Missile</div>
+                <div class="tower-btn-cost">🔒 50K HP</div>
+            </div>
+            <div class="tower-btn" data-tower="emp">
+                <div class="tower-icon emp-icon"></div>
+                <div class="tower-btn-name">EMP</div>
+                <div class="tower-btn-cost">🔒 100K HP</div>
+            </div>
+            <div class="tower-btn" data-tower="artillery">
+                <div class="tower-icon art-icon"></div>
+                <div class="tower-btn-name">Artillery</div>
+                <div class="tower-btn-cost">🔒 200K HP</div>
+            </div>
+            <div id="next-wave-btn">
+                <div id="next-wave-text">SEND WAVE</div>
+                <div id="auto-start-timer"></div>
+            </div>
+        </div>
+
+        <!-- Tower Info Panel -->
+        <div id="tower-info" class="hidden">
+            <div id="info-header">
+                <span id="info-title">Machine Gun</span>
+                <button id="info-close">&times;</button>
+            </div>
+            <div id="info-combined-title"></div>
+            <div id="info-rank-section">
+                <div id="info-rank-label">Rank: Private</div>
+                <div id="rank-bar-bg">
+                    <div id="rank-bar"></div>
+                    <span id="rank-progress-text">0 / 500 HP</span>
+                </div>
+            </div>
+            <div id="info-division-section">
+                <div id="info-division-label">Division: Army</div>
+                <button id="upgrade-division-btn" class="hidden">
+                    Upgrade to <span id="next-division-name">Marine</span> - $<span id="next-division-cost">500</span>
+                </button>
+            </div>
+            <div id="info-stats">
+                <div class="stat-row"><span>Damage:</span><span id="stat-damage">5</span></div>
+                <div class="stat-row"><span>Fire Rate:</span><span id="stat-firerate">0.1s</span></div>
+                <div class="stat-row"><span>Range:</span><span id="stat-range">120</span></div>
+                <div class="stat-row"><span>Kills:</span><span id="stat-kills">0</span></div>
+                <div class="stat-row"><span>HP Destroyed:</span><span id="stat-hpdestroyed">0</span></div>
+                <div class="stat-row"><span>Tower HP:</span><span id="stat-towerhp">150 / 150</span></div>
+            </div>
+            <button id="repair-tower-btn" class="hidden">Repair Tower - $<span id="repair-cost">0</span></button>
+            <button id="fuse-tower-btn" class="hidden">Fuse Adjacent Tower (Merge)</button>
+            <button id="sell-tower-btn">Sell Tower ($<span id="sell-amount">50</span>)</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over" class="hidden">
+            <div id="game-over-content">
+                <h1>GAME OVER</h1>
+                <p>You survived to <span id="final-wave">0</span> waves</p>
+                <p>Total kills: <span id="final-kills">0</span></p>
+                <button id="restart-btn">PLAY AGAIN</button>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen">
+            <div id="start-content">
+                <h1>TOWER DEFENSE</h1>
+                <h2>Military Warfare Edition</h2>
+                <p>Place towers to defend your base against endless waves of enemies.</p>
+                <p>Every 5th wave brings a powerful boss!</p>
+                <p style="color:#ffd700; margin-top:10px; font-size:12px;">NEW: Commander Abilities | Tower Fusion | Enemy Surrender</p>
+                <button id="start-btn">START GAME</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/game.js"></script>
+</body>
+</html>
