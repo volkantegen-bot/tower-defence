@@ -349,7 +349,7 @@ const TOWER_DEFS = {
         name: 'Machine Gun', cost: 300, damage: 12, fireRate: 0.18, range: 90,
         color: '#7cb342', projectileColor: '#ffeb3b', projectileSpeed: 600,
         splash: 0, slow: 0, stun: 0, dot: 0, description: 'Rapid fire, low damage',
-        unlockHP: 0, towerHP: 150
+        unlockHP: 0, towerHP: 240
     },
     slowdown: {
         name: 'Slowdown', cost: 700, damage: 0, fireRate: 0, range: 110,
