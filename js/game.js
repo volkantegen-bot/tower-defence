@@ -315,7 +315,7 @@ function countTowersAlongPath(waypoints) {
         const tp = gridCenter(tower.col, tower.row);
         const range = getEffectiveRange(tower);
         for (const wp of waypoints) {
-            if (Math.hypot(tp.x - wp.x, tp.y - wp.y) <= range) {
+            if (isoDist(tp.x, tp.y, wp.x, wp.y) <= range) {
                 count++;
                 break; // count each tower once
             }
@@ -475,7 +475,8 @@ let gameState = {
     // Enemy artillery - blasted tiles (new paths)
     blastTiles: [], // {col, row} tiles blasted open by enemy artillery
     destroyedTiles: new Map(), // tile key -> wave when destroyed
-    repairVehicle: null // active repair vehicle
+    repairVehicle: null, // active repair vehicle
+    repairSelectMode: false // player selecting tile to repair
 };
 
 function initGrid() {
@@ -878,6 +879,25 @@ function drawHoverPreview() {
     const { col, row } = gameState.hoverGrid;
     if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return;
 
+    // Repair road selection mode - highlight all blasted tiles
+    if (gameState.repairSelectMode) {
+        for (const bt of gameState.blastTiles) {
+            const bp = gridCenter(bt.col, bt.row);
+            const isHovered = bt.col === col && bt.row === row;
+            drawIsoDiamond(bp.x, bp.y, TILE_W - 2, TILE_H - 2,
+                isHovered ? 'rgba(255,165,0,0.6)' : 'rgba(255,165,0,0.3)',
+                isHovered ? '#ff9800' : 'rgba(255,165,0,0.5)');
+            // Wrench icon on hovered tile
+            if (isHovered) {
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('🔧', bp.x, bp.y + 4);
+            }
+        }
+        return;
+    }
+
     // Ability targeting preview
     if (gameState.selectedAbility) {
         const p = gridCenter(col, row);
@@ -910,14 +930,10 @@ function drawHoverPreview() {
     const p = gridCenter(col, row);
     const def = TOWER_DEFS[gameState.selectedTowerType];
 
-    // Range circle
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, def.range, 0, Math.PI * 2);
-    ctx.fillStyle = canPlace ? 'rgba(76,175,80,0.1)' : 'rgba(244,67,54,0.1)';
-    ctx.fill();
-    ctx.strokeStyle = canPlace ? 'rgba(76,175,80,0.3)' : 'rgba(244,67,54,0.3)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    // Range ellipse (isometric)
+    drawIsoRangeEllipse(p.x, p.y, def.range,
+        canPlace ? 'rgba(76,175,80,0.1)' : 'rgba(244,67,54,0.1)',
+        canPlace ? 'rgba(76,175,80,0.3)' : 'rgba(244,67,54,0.3)', 1);
 
     // Tile highlight
     drawIsoDiamond(p.x, p.y, TILE_W - 2, TILE_H - 2,
@@ -934,27 +950,16 @@ function drawTowers() {
         const bodyH = tower.fused ? 24 : (isGeneral ? 20 : 16);
         const bodyW = tower.fused ? 18 : 14;
 
-        // Selected tower range indicator
+        // Selected tower range indicator (isometric ellipse)
         if (gameState.selectedTower === tower) {
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, getEffectiveRange(tower), 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255,215,0,0.08)';
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(255,215,0,0.3)';
-            ctx.lineWidth = 1;
-            ctx.stroke();
+            drawIsoRangeEllipse(p.x, p.y, getEffectiveRange(tower),
+                'rgba(255,215,0,0.08)', 'rgba(255,215,0,0.3)', 1);
         }
 
-        // Slowdown tower aura
+        // Slowdown tower aura (isometric ellipse)
         if (tower.type === 'slowdown') {
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, getEffectiveRange(tower), 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(171,71,188,0.08)';
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(171,71,188,0.2)';
-            ctx.setLineDash([4, 4]);
-            ctx.stroke();
-            ctx.setLineDash([]);
+            drawIsoRangeEllipse(p.x, p.y, getEffectiveRange(tower),
+                'rgba(171,71,188,0.08)', 'rgba(171,71,188,0.2)', 1, [4, 4]);
         }
 
         // Fused tower glow
@@ -2042,19 +2047,19 @@ function drawFlamethrowerBeams() {
         if (tower.type !== 'flamethrower' || !tower.target) continue;
         const p = gridCenter(tower.col, tower.row);
         const target = tower.target;
-        const dist = Math.hypot(target.x - p.x, target.y - p.y);
+        const dist = isoDist(target.x, target.y, p.x, p.y);
         if (dist > getEffectiveRange(tower)) continue;
 
-        // Inferno mode - 360° ring
+        // Inferno mode - 360° ring (isometric ellipse)
         if (tower.fused && tower.abilityActive) {
             const range = getEffectiveRange(tower) * 0.8;
-            const grad = ctx.createRadialGradient(p.x, p.y - 14, 10, p.x, p.y - 14, range);
+            const grad = ctx.createRadialGradient(p.x, p.y - 14, 10, p.x, p.y - 14, range * 0.5);
             grad.addColorStop(0, 'rgba(255,150,0,0.5)');
             grad.addColorStop(0.5, 'rgba(255,80,0,0.3)');
             grad.addColorStop(1, 'rgba(255,0,0,0)');
             ctx.fillStyle = grad;
             ctx.beginPath();
-            ctx.arc(p.x, p.y - 14, range, 0, Math.PI * 2);
+            ctx.ellipse(p.x, p.y - 14, range, range * 0.5, 0, 0, Math.PI * 2);
             ctx.fill();
             continue;
         }
@@ -2156,6 +2161,31 @@ function getEffectiveRange(tower) {
     const rank = getRank(tower);
     const fusionMult = tower.fused ? FUSION_BONUSES[tower.type].rangeMult : 1;
     return def.range * rank.rangeMult * fusionMult;
+}
+
+// Isometric distance: accounts for 2:1 tile ratio (Y is compressed)
+// In iso view, vertical distances appear half as large, so we scale Y by 2 for true distance
+function isoDist(x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = (y2 - y1) * 2; // scale Y back to true distance
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Draw isometric range ellipse (wider horizontally, compressed vertically)
+function drawIsoRangeEllipse(cx, cy, range, fillStyle, strokeStyle, lineWidth, lineDash) {
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, range, range * 0.5, 0, 0, Math.PI * 2);
+    if (fillStyle) {
+        ctx.fillStyle = fillStyle;
+        ctx.fill();
+    }
+    if (strokeStyle) {
+        ctx.strokeStyle = strokeStyle;
+        ctx.lineWidth = lineWidth || 1;
+        if (lineDash) ctx.setLineDash(lineDash);
+        ctx.stroke();
+        if (lineDash) ctx.setLineDash([]);
+    }
 }
 
 function getCombinedTitle(tower) {
@@ -2278,7 +2308,7 @@ function updateEnemies(dt) {
         // === LANDMINE CHECK ===
         for (let i = gameState.landmines.length - 1; i >= 0; i--) {
             const mine = gameState.landmines[i];
-            const mineDist = Math.hypot(enemy.x - mine.x, enemy.y - mine.y);
+            const mineDist = isoDist(enemy.x, enemy.y, mine.x, mine.y);
             if (mineDist < 15) {
                 // Explode!
                 triggerLandmine(mine, i);
@@ -2308,7 +2338,7 @@ function updateEnemyShooting(dt) {
 
         for (const tower of gameState.towers) {
             const tp = gridCenter(tower.col, tower.row);
-            const dist = Math.hypot(tp.x - enemy.x, tp.y - enemy.y);
+            const dist = isoDist(tp.x, tp.y, enemy.x, enemy.y);
             if (dist < closestDist) {
                 closestDist = dist;
                 closestTower = tower;
@@ -2357,7 +2387,7 @@ function updateEnemyShooting(dt) {
         // Check collision with towers
         for (const tower of gameState.towers) {
             const tp = gridCenter(tower.col, tower.row);
-            const dist = Math.hypot(tp.x - proj.x, (tp.y - 7) - proj.y);
+            const dist = isoDist(tp.x, tp.y - 7, proj.x, proj.y);
             if (dist < 15) {
                 tower.hp -= proj.damage;
                 proj.lifetime = 0;
@@ -2527,9 +2557,14 @@ function findNextBlastTarget() {
     return null;
 }
 
+let blastsThisWave = 0; // max 1 blast per wave
+
 function updateEnemyArtillery(dt) {
     for (const enemy of gameState.enemies) {
         if (enemy.dead || !enemy.isArtillery || enemy.stunTimer > 0) continue;
+
+        // Max 1 tile blasted per wave
+        if (blastsThisWave >= 1) continue;
 
         enemy.artilleryCooldown -= dt;
         if (enemy.artilleryCooldown > 0) continue;
@@ -2548,6 +2583,7 @@ function updateEnemyArtillery(dt) {
             gameState.grid[target.col][target.row] = 1;
             pathSet.add(`${target.col},${target.row}`);
             gameState.blastTiles.push({ col: target.col, row: target.row });
+            blastsThisWave++;
 
             // Visual explosion
             const tp = gridCenter(target.col, target.row);
@@ -2729,7 +2765,7 @@ function updateAllies(dt) {
 
             for (const enemy of gameState.enemies) {
                 if (enemy.dead) continue;
-                const eDist = Math.hypot(enemy.x - ally.x, enemy.y - ally.y);
+                const eDist = isoDist(enemy.x, enemy.y, ally.x, ally.y);
                 if (eDist < closestDist) {
                     closestDist = eDist;
                     closestEnemy = enemy;
@@ -2862,7 +2898,7 @@ function triggerLandmine(mine, index) {
     // Deal damage to all enemies in radius
     for (const enemy of gameState.enemies) {
         if (enemy.dead) continue;
-        const dist = Math.hypot(enemy.x - mine.x, enemy.y - mine.y);
+        const dist = isoDist(enemy.x, enemy.y, mine.x, mine.y);
         if (dist <= mine.radius) {
             const falloff = 1 - (dist / mine.radius) * 0.5;
             enemy.hp -= mine.damage * falloff;
@@ -2921,7 +2957,7 @@ function updateAirstrikes(dt) {
             strike.damageDealt = true;
             for (const enemy of gameState.enemies) {
                 if (enemy.dead) continue;
-                const dist = Math.hypot(enemy.x - strike.x, enemy.y - strike.y);
+                const dist = isoDist(enemy.x, enemy.y, strike.x, strike.y);
                 if (dist <= strike.radius) {
                     const falloff = 1 - (dist / strike.radius) * 0.5;
                     enemy.hp -= strike.damage * falloff;
@@ -3029,7 +3065,7 @@ function activateFusionAbility(tower) {
             const range = getEffectiveRange(tower);
             for (const enemy of gameState.enemies) {
                 if (enemy.dead || enemy.isBoss) continue;
-                const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                const dist = isoDist(enemy.x, enemy.y, p.x, p.y);
                 if (dist <= range && enemy.hp / enemy.maxHP < 0.2) {
                     killEnemy(enemy, tower);
                 }
@@ -3124,7 +3160,7 @@ function updateFusionAbilities(dt) {
                 // Inferno: damage all enemies in range
                 for (const enemy of gameState.enemies) {
                     if (enemy.dead) continue;
-                    const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                    const dist = isoDist(enemy.x, enemy.y, p.x, p.y);
                     if (dist <= range * 0.8) {
                         const dmg = getEffectiveDamage(tower) * 0.5 * dt;
                         enemy.hp -= dmg;
@@ -3136,7 +3172,7 @@ function updateFusionAbilities(dt) {
                 // Freeze: all enemies in range are frozen
                 for (const enemy of gameState.enemies) {
                     if (enemy.dead) continue;
-                    const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                    const dist = isoDist(enemy.x, enemy.y, p.x, p.y);
                     if (dist <= range) {
                         enemy.stunTimer = 0.2;
                     }
@@ -3209,7 +3245,7 @@ function findTarget(tower) {
 
     for (const enemy of gameState.enemies) {
         if (enemy.dead) continue;
-        const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+        const dist = isoDist(enemy.x, enemy.y, p.x, p.y);
         if (dist > range) continue;
 
         const ep = enemy.path || pathWaypoints;
@@ -3254,7 +3290,6 @@ function updateTowers(dt) {
                 }
                 if (gameState.selectedTower === tower) updateTowerInfoPanel(tower);
             }
-            continue; // Tower can't function during repair
         }
 
         // Slowdown tower - passive aura
@@ -3262,7 +3297,7 @@ function updateTowers(dt) {
             const range = getEffectiveRange(tower);
             for (const enemy of gameState.enemies) {
                 if (enemy.dead) continue;
-                const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                const dist = isoDist(enemy.x, enemy.y, p.x, p.y);
                 if (dist <= range) {
                     enemy.slowTimer = 0.5;
                     enemy.slowAmount = 0.5;
@@ -3303,7 +3338,7 @@ function updateTowers(dt) {
 
                     for (const enemy of gameState.enemies) {
                         if (enemy.dead) continue;
-                        const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                        const dist = isoDist(enemy.x, enemy.y, p.x, p.y);
                         if (dist > range) continue;
 
                         const enemyAngle = Math.atan2(enemy.y - p.y, enemy.x - p.x);
@@ -3360,14 +3395,14 @@ function updateProjectiles(dt) {
         // Check collision with enemies
         for (const enemy of gameState.enemies) {
             if (enemy.dead) continue;
-            const dist = Math.hypot(enemy.x - proj.x, enemy.y - proj.y);
+            const dist = isoDist(enemy.x, enemy.y, proj.x, proj.y);
 
             if (dist < enemy.size + 4) {
                 // Direct hit
                 if (proj.splash > 0) {
                     for (const e of gameState.enemies) {
                         if (e.dead) continue;
-                        const sDist = Math.hypot(e.x - proj.x, e.y - proj.y);
+                        const sDist = isoDist(e.x, e.y, proj.x, proj.y);
                         if (sDist <= proj.splash) {
                             const falloff = 1 - (sDist / proj.splash) * 0.5;
                             const dmg = proj.damage * falloff;
@@ -3484,6 +3519,7 @@ function generateWave(waveNum) {
 
 function startWave() {
     playSound('wave_start');
+    blastsThisWave = 0; // reset blast limit
     gameState.wave++;
     gameState.waveActive = true;
     gameState.autoWaveTimer = 0;
@@ -3835,7 +3871,8 @@ function startGame() {
         enemyProjectiles: [],
         blastTiles: [],
         destroyedTiles: new Map(),
-        repairVehicle: null
+        repairVehicle: null,
+        repairSelectMode: false
     };
     // Reset pathSet to original BEFORE initGrid so blasted tiles are cleared
     pathSet.clear();
@@ -3893,6 +3930,15 @@ canvas.addEventListener('click', (e) => {
         return;
     }
 
+    // Repair road selection mode
+    if (gameState.repairSelectMode) {
+        const clickedBlast = gameState.blastTiles.find(b => b.col === grid.col && b.row === grid.row);
+        if (clickedBlast) {
+            dispatchRepairVehicle(clickedBlast);
+        }
+        return;
+    }
+
     if (grid.col < 0 || grid.col >= GRID_COLS || grid.row < 0 || grid.row >= GRID_ROWS) {
         // Clicked outside grid - deselect
         gameState.selectedTower = null;
@@ -3933,9 +3979,11 @@ canvas.addEventListener('contextmenu', (e) => {
     gameState.selectedTowerType = null;
     gameState.selectedTower = null;
     gameState.selectedAbility = null;
+    gameState.repairSelectMode = false;
     document.getElementById('tower-info').classList.add('hidden');
     document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
     document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
+    document.getElementById('repair-roads-btn').classList.remove('selected');
 });
 
 // Tower selection buttons
@@ -4052,17 +4100,32 @@ document.getElementById('fuse-tower-btn').addEventListener('click', () => {
     updateTowerInfoPanel(tower);
 });
 
-// Repair Roads button - sends a repair vehicle from base
+// Repair Roads button - enters selection mode to pick a blasted tile
 document.getElementById('repair-roads-btn').addEventListener('click', () => {
     if (gameState.blastTiles.length === 0) return;
     if (gameState.money < 1000) return;
-    // Don't allow if a repair vehicle is already active
     if (gameState.repairVehicle) return;
 
-    gameState.money -= 1000;
+    // Toggle repair selection mode
+    if (gameState.repairSelectMode) {
+        gameState.repairSelectMode = false;
+        document.getElementById('repair-roads-btn').classList.remove('selected');
+    } else {
+        gameState.repairSelectMode = true;
+        // Clear other selections
+        gameState.selectedTowerType = null;
+        gameState.selectedTower = null;
+        gameState.selectedAbility = null;
+        document.getElementById('tower-info').classList.add('hidden');
+        document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+        document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
+        document.getElementById('repair-roads-btn').classList.add('selected');
+    }
+});
 
-    // Target the oldest blasted tile
-    const tile = gameState.blastTiles[0];
+// Dispatch repair vehicle to a specific blasted tile
+function dispatchRepairVehicle(tile) {
+    gameState.money -= 1000;
     const basePt = PATH_CELLS[PATH_CELLS.length - 1];
     const basePos = gridCenter(basePt.c, basePt.r);
     const targetPos = gridCenter(tile.col, tile.row);
@@ -4075,14 +4138,16 @@ document.getElementById('repair-roads-btn').addEventListener('click', () => {
         baseX: basePos.x,
         baseY: basePos.y,
         targetTile: tile,
-        phase: 'going', // 'going', 'repairing', 'returning'
+        phase: 'going',
         repairTimer: 0,
         speed: 80
     };
 
+    gameState.repairSelectMode = false;
+    document.getElementById('repair-roads-btn').classList.remove('selected');
     updateMoneyDisplay();
     playSound('place');
-});
+}
 
 // Update repair vehicle
 function updateRepairVehicle(dt) {
