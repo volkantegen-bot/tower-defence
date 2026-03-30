@@ -3435,7 +3435,7 @@ function generateWave(waveNum) {
     const randFactor = () => 0.8 + Math.random() * 0.4;
 
     const infantryPct = (0.6 - Math.min(0.1, waveNum * 0.005)) * randFactor();
-    const jeepPct = waveNum >= 3 ? (0.25 * randFactor()) : 0;
+    const jeepPct = waveNum >= 4 ? (0.05 + Math.min(0.20, (waveNum - 4) * 0.03)) * randFactor() : 0;
     const tankPct = waveNum >= 6 ? (0.1 * randFactor()) : 0;
     const specialPct = waveNum >= 5 ? (0.10 * randFactor()) : 0;
     const artPct = waveNum >= 8 ? (0.05 * randFactor()) : 0;
