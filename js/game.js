@@ -899,20 +899,20 @@ function drawHoverPreview() {
     const { col, row } = gameState.hoverGrid;
     if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return;
 
-    // Repair road selection mode - highlight all blasted tiles
+    // Demolish road selection mode - highlight all blasted tiles
     if (gameState.repairSelectMode) {
         for (const bt of gameState.blastTiles) {
             const bp = gridCenter(bt.col, bt.row);
             const isHovered = bt.col === col && bt.row === row;
             drawIsoDiamond(bp.x, bp.y, TILE_W - 2, TILE_H - 2,
-                isHovered ? 'rgba(255,165,0,0.6)' : 'rgba(255,165,0,0.3)',
-                isHovered ? '#ff9800' : 'rgba(255,165,0,0.5)');
-            // Wrench icon on hovered tile
+                isHovered ? 'rgba(255,50,50,0.6)' : 'rgba(255,100,50,0.3)',
+                isHovered ? '#f44336' : 'rgba(255,100,50,0.5)');
+            // X icon on hovered tile
             if (isHovered) {
                 ctx.fillStyle = '#fff';
                 ctx.font = 'bold 14px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('🔧', bp.x, bp.y + 4);
+                ctx.fillText('✕', bp.x, bp.y + 5);
             }
         }
         return;
@@ -4359,33 +4359,44 @@ function updateRepairVehicle(dt) {
             });
         }
         if (rv.repairTimer <= 0) {
-            // Actually repair the tile
+            // Demolish the blasted tile - block it off
             const tile = rv.targetTile;
             gameState.blastTiles = gameState.blastTiles.filter(b => b !== tile);
             pathSet.delete(`${tile.col},${tile.row}`);
             if (gameState.grid[tile.col]) {
                 gameState.grid[tile.col][tile.row] = 0;
             }
-            // Repair complete particles
-            for (let i = 0; i < 10; i++) {
+            // Demolish particles (dust/debris)
+            for (let i = 0; i < 12; i++) {
                 gameState.particles.push({
                     x: rv.x + (Math.random() - 0.5) * 20,
                     y: rv.y + (Math.random() - 0.5) * 10,
-                    vx: (Math.random() - 0.5) * 40,
-                    vy: -20 - Math.random() * 30,
+                    vx: (Math.random() - 0.5) * 50,
+                    vy: -25 - Math.random() * 30,
                     life: 0.6, maxLife: 0.6,
-                    color: i < 5 ? '#8d6e63' : '#4caf50', size: 3
+                    color: ['#8d6e63', '#a1887f', '#6d4c41', '#ff6600'][Math.floor(Math.random() * 4)], size: 3
                 });
             }
-            // Rebuild shortcut or clear
+            playSound('explosion');
+
+            // Force ALL enemies on shortcut back to original path
+            for (const enemy of gameState.enemies) {
+                if (enemy.path !== pathWaypoints) {
+                    enemy.path = pathWaypoints;
+                    // Find closest waypoint on original path
+                    let closestIdx = 0;
+                    let closestDist = Infinity;
+                    for (let i = 0; i < pathWaypoints.length; i++) {
+                        const d = Math.hypot(enemy.x - pathWaypoints[i].x, enemy.y - pathWaypoints[i].y);
+                        if (d < closestDist) { closestDist = d; closestIdx = i; }
+                    }
+                    enemy.waypointIdx = closestIdx;
+                }
+            }
+
+            // Rebuild shortcut path or clear it
             if (gameState.blastTiles.length === 0) {
                 shortcutWaypoints = null;
-                for (const enemy of gameState.enemies) {
-                    if (enemy.path !== pathWaypoints) {
-                        enemy.path = pathWaypoints;
-                        enemy.waypointIdx = 0;
-                    }
-                }
             } else {
                 rebuildPathWithBlasts();
             }
