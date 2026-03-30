@@ -3509,7 +3509,7 @@ function generateWave(waveNum) {
     const infantryCount = Math.max(2, Math.round(totalEnemies * infantryPct / total));
     const jeepCount = Math.round(totalEnemies * jeepPct / total);
     const tankCount = Math.round(totalEnemies * tankPct / total);
-    const artCount = waveNum >= 10 ? Math.min(3, Math.round(totalEnemies * artPct / total)) : 0;
+    const artCount = waveNum >= 4 ? Math.min(3, Math.round(totalEnemies * artPct / total)) : 0;
     const specialCount = Math.round(totalEnemies * specialPct / total);
 
     // Split specials between runners and saboteurs
