@@ -3435,17 +3435,17 @@ function generateWave(waveNum) {
     const randFactor = () => 0.8 + Math.random() * 0.4;
 
     const infantryPct = (0.6 - Math.min(0.1, waveNum * 0.005)) * randFactor();
-    const jeepPct = waveNum >= 2 ? (0.25 * randFactor()) : 0;
-    const tankPct = waveNum >= 5 ? (0.1 * randFactor()) : 0;
-    const specialPct = waveNum >= 4 ? (0.10 * randFactor()) : 0;
-    const artPct = waveNum >= 7 ? (0.05 * randFactor()) : 0;
+    const jeepPct = waveNum >= 3 ? (0.25 * randFactor()) : 0;
+    const tankPct = waveNum >= 6 ? (0.1 * randFactor()) : 0;
+    const specialPct = waveNum >= 5 ? (0.10 * randFactor()) : 0;
+    const artPct = waveNum >= 8 ? (0.05 * randFactor()) : 0;
 
     const total = infantryPct + jeepPct + tankPct + specialPct + artPct;
 
     const infantryCount = Math.max(2, Math.round(totalEnemies * infantryPct / total));
     const jeepCount = Math.round(totalEnemies * jeepPct / total);
     const tankCount = Math.round(totalEnemies * tankPct / total);
-    const artCount = waveNum >= 7 ? Math.min(3, Math.round(totalEnemies * artPct / total)) : 0;
+    const artCount = waveNum >= 8 ? Math.min(3, Math.round(totalEnemies * artPct / total)) : 0;
     const specialCount = Math.round(totalEnemies * specialPct / total);
 
     // Split specials between runners and saboteurs
