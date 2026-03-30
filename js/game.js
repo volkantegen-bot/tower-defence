@@ -255,6 +255,17 @@ const ABILITY_COSTS = {
     supply: 200
 };
 
+// ---- Zoom & Pan State ----
+let zoomLevel = 1.0;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 3.0;
+const ZOOM_STEP = 0.1;
+let panX = 0;
+let panY = 0;
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+
 // ---- Isometric Helpers ----
 function isoToScreen(col, row) {
     const originX = canvas.width / 2;
@@ -265,11 +276,20 @@ function isoToScreen(col, row) {
     };
 }
 
+// Convert screen pixel coords to world coords (accounting for zoom/pan)
+function screenToWorld(sx, sy) {
+    return {
+        x: (sx - canvas.width / 2) / zoomLevel + canvas.width / 2 - panX,
+        y: (sy - canvas.height / 2) / zoomLevel + canvas.height / 2 - panY
+    };
+}
+
 function screenToGrid(sx, sy) {
+    const world = screenToWorld(sx, sy);
     const originX = canvas.width / 2;
     const originY = 80;
-    const mx = sx - originX;
-    const my = sy - originY;
+    const mx = world.x - originX;
+    const my = world.y - originY;
     const col = (mx / (TILE_W / 2) + my / (TILE_H / 2)) / 2;
     const row = (my / (TILE_H / 2) - mx / (TILE_W / 2)) / 2;
     return { col: Math.floor(col), row: Math.floor(row) };
@@ -346,43 +366,43 @@ function getEnemyPath() {
 // towerHP: how much damage a tower can take from enemy fire before being destroyed
 const TOWER_DEFS = {
     machinegun: {
-        name: 'Machine Gun', cost: 300, damage: 12, fireRate: 0.18, range: 90,
+        name: 'Machine Gun', cost: 300, damage: 12, fireRate: 0.18, range: 108,
         color: '#7cb342', projectileColor: '#ffeb3b', projectileSpeed: 600,
         splash: 0, slow: 0, stun: 0, dot: 0, description: 'Rapid fire, low damage',
         unlockHP: 0, towerHP: 240
     },
     slowdown: {
-        name: 'Slowdown', cost: 700, damage: 0, fireRate: 0, range: 110,
+        name: 'Slowdown', cost: 700, damage: 0, fireRate: 0, range: 132,
         color: '#ab47bc', projectileColor: '#9c27b0', projectileSpeed: 0,
         splash: 0, slow: 0.5, stun: 0, dot: 0, description: 'Slows enemies, no damage',
         unlockHP: 0, towerHP: 120
     },
     sniper: {
-        name: 'Sniper', cost: 1500, damage: 80, fireRate: 1.2, range: 200,
+        name: 'Sniper', cost: 1500, damage: 80, fireRate: 1.2, range: 240,
         color: '#5c6bc0', projectileColor: '#e0e0e0', projectileSpeed: 900,
         splash: 0, slow: 0, stun: 0, dot: 0, description: 'High damage, slow fire',
         unlockHP: 3000, towerHP: 100  // Sniper: 3K
     },
     flamethrower: {
-        name: 'Flamethrower', cost: 3500, damage: 15, fireRate: 0.2, range: 80,
+        name: 'Flamethrower', cost: 3500, damage: 15, fireRate: 0.2, range: 96,
         color: '#ff9800', projectileColor: '#ff6f00', projectileSpeed: 0,
         splash: 0, slow: 0, stun: 0, dot: 5, description: 'Continuous cone, DOT',
         unlockHP: 16000, towerHP: 130
     },
     missile: {
-        name: 'Missile Launcher', cost: 12000, damage: 40, fireRate: 1.4, range: 160,
+        name: 'Missile Launcher', cost: 12000, damage: 40, fireRate: 1.4, range: 192,
         color: '#ef5350', projectileColor: '#ff5722', projectileSpeed: 400,
         splash: 50, slow: 0, stun: 0, dot: 0, description: 'Area splash damage',
         unlockHP: 50000, towerHP: 140
     },
     emp: {
-        name: 'EMP', cost: 30000, damage: 20, fireRate: 1.2, range: 130,
+        name: 'EMP', cost: 30000, damage: 20, fireRate: 1.2, range: 156,
         color: '#29b6f6', projectileColor: '#03a9f4', projectileSpeed: 500,
         splash: 0, slow: 0, stun: 2.0, dot: 0, description: 'Stuns vehicles & bosses',
         unlockHP: 100000, towerHP: 110
     },
     artillery: {
-        name: 'Artillery', cost: 200000, damage: 120, fireRate: 2.5, range: 180,
+        name: 'Artillery', cost: 200000, damage: 120, fireRate: 2.5, range: 216,
         color: '#8d6e63', projectileColor: '#795548', projectileSpeed: 300,
         splash: 60, slow: 0, stun: 0, dot: 0, description: 'Heavy area damage',
         unlockHP: 200000, towerHP: 160
@@ -391,11 +411,11 @@ const TOWER_DEFS = {
 
 // ---- Rank System ----
 const RANKS = [
-    { name: 'Private',  hpReq: 0,     dmgMult: 1.0,  rateMult: 1.0, rangeMult: 1.0 },
-    { name: 'Corporal', hpReq: 500,   dmgMult: 1.15, rateMult: 1.0, rangeMult: 1.0 },
-    { name: 'Sergeant', hpReq: 2000,  dmgMult: 1.3,  rateMult: 1.0, rangeMult: 1.0 },
-    { name: 'Captain',  hpReq: 8000,  dmgMult: 1.5,  rateMult: 1.0, rangeMult: 1.0 },
-    { name: 'General',  hpReq: 25000, dmgMult: 1.8,  rateMult: 1.0, rangeMult: 1.0 }
+    { name: 'Private',  hpReq: 0,     dmgMult: 1.0,  rateMult: 1.0, rangeMult: 1.0, hpMult: 1.0 },
+    { name: 'Corporal', hpReq: 500,   dmgMult: 1.15, rateMult: 1.0, rangeMult: 1.0, hpMult: 1.15 },
+    { name: 'Sergeant', hpReq: 2000,  dmgMult: 1.3,  rateMult: 1.0, rangeMult: 1.0, hpMult: 1.3 },
+    { name: 'Captain',  hpReq: 8000,  dmgMult: 1.5,  rateMult: 1.0, rangeMult: 1.0, hpMult: 1.5 },
+    { name: 'General',  hpReq: 25000, dmgMult: 1.8,  rateMult: 1.0, rangeMult: 1.0, hpMult: 1.8 }
 ];
 
 // ---- Division System ----
@@ -3267,6 +3287,15 @@ function updateTowers(dt) {
         const def = TOWER_DEFS[tower.type];
         const p = gridCenter(tower.col, tower.row);
 
+        // Update maxHP based on rank (tower gets tougher as it ranks up)
+        const rank = getRank(tower);
+        const newMaxHP = Math.ceil(def.towerHP * rank.hpMult);
+        if (newMaxHP > tower.maxHP) {
+            const hpGain = newMaxHP - tower.maxHP;
+            tower.maxHP = newMaxHP;
+            tower.hp += hpGain; // gain the extra HP
+        }
+
         // Handle repair timer
         if (tower.repairing) {
             tower.repairTimer -= dt;
@@ -3659,12 +3688,15 @@ function updateTowerInfoPanel(tower) {
     const infoPanel = document.getElementById('tower-info');
     infoPanel.classList.remove('hidden');
 
-    // Position panel near the tower on canvas
+    // Position panel near the tower on canvas (accounting for zoom/pan)
     const rect = canvas.getBoundingClientRect();
     const center = gridCenter(tower.col, tower.row);
+    // Apply zoom/pan transform to get screen position
+    const screenX = (center.x - canvas.width / 2 + panX) * zoomLevel + canvas.width / 2;
+    const screenY = (center.y - canvas.height / 2 + panY) * zoomLevel + canvas.height / 2;
     // Convert canvas coords to CSS coords
-    const cssX = rect.left + (center.x / canvas.width) * rect.width;
-    const cssY = rect.top + (center.y / canvas.height) * rect.height;
+    const cssX = rect.left + (screenX / canvas.width) * rect.width;
+    const cssY = rect.top + (screenY / canvas.height) * rect.height;
     const panelWidth = 260;
     const panelHeight = infoPanel.offsetHeight || 350;
     // Try to place to the right of the tower, fall back to left if off-screen
@@ -3800,9 +3832,15 @@ function update(dt) {
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Background
+    // Background (drawn without transform)
     ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Apply zoom & pan transform
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.scale(zoomLevel, zoomLevel);
+    ctx.translate(-canvas.width / 2 + panX, -canvas.height / 2 + panY);
 
     drawMap();
     drawHoverPreview();
@@ -3815,6 +3853,8 @@ function render() {
     drawRepairVehicle();
     drawAirstrikeEffects();
     drawParticles();
+
+    ctx.restore();
 }
 
 const TARGET_FPS = 30;
@@ -3985,6 +4025,64 @@ canvas.addEventListener('contextmenu', (e) => {
     document.querySelectorAll('.ability-btn').forEach(b => b.classList.remove('selected'));
     document.getElementById('repair-roads-btn').classList.remove('selected');
 });
+
+// ---- Zoom with mouse wheel ----
+canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const oldZoom = zoomLevel;
+    if (e.deltaY < 0) {
+        zoomLevel = Math.min(ZOOM_MAX, zoomLevel + ZOOM_STEP);
+    } else {
+        zoomLevel = Math.max(ZOOM_MIN, zoomLevel - ZOOM_STEP);
+    }
+    // Zoom toward mouse cursor position
+    if (zoomLevel !== oldZoom) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+        // World point under cursor before zoom
+        const wx = (mx - canvas.width / 2) / oldZoom + canvas.width / 2 - panX;
+        const wy = (my - canvas.height / 2) / oldZoom + canvas.height / 2 - panY;
+        // Adjust pan so same world point stays under cursor after zoom
+        panX = canvas.width / 2 - wx + (mx - canvas.width / 2) / zoomLevel;
+        panY = canvas.height / 2 - wy + (my - canvas.height / 2) / zoomLevel;
+    }
+}, { passive: false });
+
+// ---- Pan with middle mouse button ----
+canvas.addEventListener('mousedown', (e) => {
+    if (e.button === 1) { // middle click
+        e.preventDefault();
+        isPanning = true;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+    }
+});
+
+window.addEventListener('mousemove', (e) => {
+    if (isPanning) {
+        panX += (e.clientX - panStartX) / zoomLevel;
+        panY += (e.clientY - panStartY) / zoomLevel;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+    }
+});
+
+window.addEventListener('mouseup', (e) => {
+    if (e.button === 1) {
+        isPanning = false;
+    }
+});
+
+// Reset zoom/pan with double-click middle button or Home key
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'Home') {
+        zoomLevel = 1.0;
+        panX = 0;
+        panY = 0;
+    }
+});
+
 
 // Tower selection buttons
 document.querySelectorAll('.tower-btn').forEach(btn => {
