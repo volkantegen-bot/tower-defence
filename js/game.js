@@ -244,7 +244,7 @@ const TILE_W = 64;
 const TILE_H = 32;
 const GRID_COLS = 16;
 const GRID_ROWS = 16;
-const SELL_REFUND = 0.5;
+const SELL_REFUND = 0.4;
 const AUTO_WAVE_DELAY = 3; // seconds
 const BASE_MAX_HP = 100;
 
@@ -333,9 +333,9 @@ function getEnemyPath() {
 
     // Strongly prefer path with fewer towers, but add some randomness
     if (towersOnOriginal < towersOnShortcut) {
-        return Math.random() < 0.8 ? pathWaypoints : shortcutWaypoints;
+        return Math.random() < 0.6 ? pathWaypoints : shortcutWaypoints;
     } else if (towersOnShortcut < towersOnOriginal) {
-        return Math.random() < 0.8 ? shortcutWaypoints : pathWaypoints;
+        return Math.random() < 0.6 ? shortcutWaypoints : pathWaypoints;
     }
     // Equal towers - random
     return Math.random() < 0.5 ? pathWaypoints : shortcutWaypoints;
@@ -346,37 +346,37 @@ function getEnemyPath() {
 // towerHP: how much damage a tower can take from enemy fire before being destroyed
 const TOWER_DEFS = {
     machinegun: {
-        name: 'Machine Gun', cost: 250, damage: 6, fireRate: 0.15, range: 90,
+        name: 'Machine Gun', cost: 300, damage: 12, fireRate: 0.18, range: 90,
         color: '#7cb342', projectileColor: '#ffeb3b', projectileSpeed: 600,
         splash: 0, slow: 0, stun: 0, dot: 0, description: 'Rapid fire, low damage',
         unlockHP: 0, towerHP: 150
     },
     slowdown: {
-        name: 'Slowdown', cost: 750, damage: 0, fireRate: 0, range: 110,
+        name: 'Slowdown', cost: 700, damage: 0, fireRate: 0, range: 110,
         color: '#ab47bc', projectileColor: '#9c27b0', projectileSpeed: 0,
         splash: 0, slow: 0.5, stun: 0, dot: 0, description: 'Slows enemies, no damage',
         unlockHP: 0, towerHP: 120
     },
     sniper: {
-        name: 'Sniper', cost: 2000, damage: 80, fireRate: 1.5, range: 200,
+        name: 'Sniper', cost: 1500, damage: 80, fireRate: 1.2, range: 200,
         color: '#5c6bc0', projectileColor: '#e0e0e0', projectileSpeed: 900,
         splash: 0, slow: 0, stun: 0, dot: 0, description: 'High damage, slow fire',
         unlockHP: 3000, towerHP: 100  // Sniper: 3K
     },
     flamethrower: {
-        name: 'Flamethrower', cost: 5000, damage: 15, fireRate: 0.15, range: 80,
+        name: 'Flamethrower', cost: 3500, damage: 15, fireRate: 0.2, range: 80,
         color: '#ff9800', projectileColor: '#ff6f00', projectileSpeed: 0,
         splash: 0, slow: 0, stun: 0, dot: 5, description: 'Continuous cone, DOT',
         unlockHP: 16000, towerHP: 130
     },
     missile: {
-        name: 'Missile Launcher', cost: 25000, damage: 40, fireRate: 1.0, range: 160,
+        name: 'Missile Launcher', cost: 12000, damage: 40, fireRate: 1.4, range: 160,
         color: '#ef5350', projectileColor: '#ff5722', projectileSpeed: 400,
         splash: 50, slow: 0, stun: 0, dot: 0, description: 'Area splash damage',
         unlockHP: 50000, towerHP: 140
     },
     emp: {
-        name: 'EMP', cost: 100000, damage: 20, fireRate: 0.8, range: 130,
+        name: 'EMP', cost: 30000, damage: 20, fireRate: 1.2, range: 130,
         color: '#29b6f6', projectileColor: '#03a9f4', projectileSpeed: 500,
         splash: 0, slow: 0, stun: 2.0, dot: 0, description: 'Stuns vehicles & bosses',
         unlockHP: 100000, towerHP: 110
@@ -391,19 +391,19 @@ const TOWER_DEFS = {
 
 // ---- Rank System ----
 const RANKS = [
-    { name: 'Private',  hpReq: 0,     dmgMult: 1.0, rateMult: 1.0, rangeMult: 1.0 },
-    { name: 'Corporal', hpReq: 500,   dmgMult: 1.5, rateMult: 1.5, rangeMult: 1.5 },
-    { name: 'Sergeant', hpReq: 2000,  dmgMult: 2.0, rateMult: 2.0, rangeMult: 2.0 },
-    { name: 'Captain',  hpReq: 8000,  dmgMult: 4.0, rateMult: 4.0, rangeMult: 4.0 },
-    { name: 'General',  hpReq: 25000, dmgMult: 8.0, rateMult: 8.0, rangeMult: 8.0 }
+    { name: 'Private',  hpReq: 0,     dmgMult: 1.0,  rateMult: 1.0, rangeMult: 1.0 },
+    { name: 'Corporal', hpReq: 500,   dmgMult: 1.15, rateMult: 1.0, rangeMult: 1.0 },
+    { name: 'Sergeant', hpReq: 2000,  dmgMult: 1.3,  rateMult: 1.0, rangeMult: 1.0 },
+    { name: 'Captain',  hpReq: 8000,  dmgMult: 1.5,  rateMult: 1.0, rangeMult: 1.0 },
+    { name: 'General',  hpReq: 25000, dmgMult: 1.8,  rateMult: 1.0, rangeMult: 1.0 }
 ];
 
 // ---- Division System ----
 const DIVISIONS = [
-    { name: 'Army',          cost: 0,    dmgMult: 1.0,  rateMult: 1.0,  rangeMult: 1.0 },
-    { name: 'Marine',        cost: 500,  dmgMult: 2.5,  rateMult: 2.0,  rangeMult: 1.5 },
-    { name: 'Special Forces', cost: 1500, dmgMult: 6.0,  rateMult: 5.0,  rangeMult: 4.0 },
-    { name: 'Delta Force',   cost: 4000, dmgMult: 11.0, rateMult: 10.0, rangeMult: 9.0 }
+    { name: 'Army',          cost: 0,    dmgMult: 1.0, rateMult: 1.0, rangeMult: 1.0 },
+    { name: 'Marine',        cost: 500,  dmgMult: 1.5, rateMult: 1.3, rangeMult: 1.2 },
+    { name: 'Special Forces', cost: 1500, dmgMult: 2.5, rateMult: 2.0, rangeMult: 1.5 },
+    { name: 'Delta Force',   cost: 4000, dmgMult: 4.0, rateMult: 3.0, rangeMult: 2.0 }
 ];
 
 // ---- Enemy Definitions ----
@@ -411,31 +411,35 @@ const DIVISIONS = [
 // shootRange/shootDamage/shootRate: shooting stats
 // isArtillery: can blast open new paths
 const ENEMY_DEFS = {
-    infantry: { name: 'Infantry', baseHP: 60, speed: 30, baseDmg: 12, rankXP: 1, color: '#a5d6a7', size: 6,
+    infantry: { name: 'Infantry', baseHP: 90, speed: 30, baseDmg: 12, rankXP: 1, color: '#a5d6a7', size: 6,
                 canShoot: true, shootRange: 70, shootDamage: 5, shootRate: 1.5 },
-    jeep:     { name: 'Jeep',     baseHP: 1500, speed: 50, baseDmg: 30, rankXP: 3, color: '#fff176', size: 8,
+    jeep:     { name: 'Jeep',     baseHP: 2250, speed: 50, baseDmg: 30, rankXP: 3, color: '#fff176', size: 8,
                 canShoot: true, shootRange: 90, shootDamage: 12, shootRate: 1.2 },
-    tank:     { name: 'Tank',     baseHP: 5000, speed: 18, baseDmg: 100, rankXP: 10, color: '#ef9a9a', size: 12,
+    tank:     { name: 'Tank',     baseHP: 7500, speed: 18, baseDmg: 100, rankXP: 10, color: '#ef9a9a', size: 12,
                 canShoot: true, shootRange: 110, shootDamage: 30, shootRate: 2.0 },
-    enemyArt: { name: 'Enemy Artillery', baseHP: 3000, speed: 14, baseDmg: 60, rankXP: 8, color: '#ff6e40', size: 14,
-                canShoot: true, shootRange: 130, shootDamage: 20, shootRate: 2.5, isArtillery: true }
+    enemyArt: { name: 'Enemy Artillery', baseHP: 4500, speed: 14, baseDmg: 60, rankXP: 8, color: '#ff6e40', size: 14,
+                canShoot: true, shootRange: 130, shootDamage: 20, shootRate: 2.5, isArtillery: true },
+    runner:   { name: 'Runner', baseHP: 45, speed: 50, baseDmg: 8, rankXP: 1, color: '#81d4fa', size: 5,
+                canShoot: false, shootRange: 0, shootDamage: 0, shootRate: 999 },
+    saboteur: { name: 'Saboteur', baseHP: 120, speed: 25, baseDmg: 5, rankXP: 2, color: '#ff8a80', size: 7,
+                canShoot: true, shootRange: 100, shootDamage: 40, shootRate: 1.5, targetsTowersOnly: true }
 };
 
 // ---- Fusion Tower Bonuses ----
 const FUSION_BONUSES = {
-    machinegun:   { name: 'Twin Machine Gun',  dmgMult: 2.2, rateMult: 1.3, rangeMult: 1.15, ability: 'Bullet Storm: 3s of 4x fire rate' },
-    sniper:       { name: 'Twin Sniper',       dmgMult: 2.5, rateMult: 1.2, rangeMult: 1.3,  ability: 'Headshot: Instant kill <20% HP enemies in range' },
-    missile:      { name: 'Twin Missile',       dmgMult: 2.0, rateMult: 1.4, rangeMult: 1.2,  ability: 'Barrage: Fire 8 missiles in all directions' },
-    flamethrower: { name: 'Twin Flamethrower', dmgMult: 2.3, rateMult: 1.2, rangeMult: 1.4,  ability: 'Inferno: 360° flame ring for 3s' },
-    artillery:    { name: 'Twin Artillery',     dmgMult: 2.4, rateMult: 1.1, rangeMult: 1.3,  ability: 'Carpet Bomb: 5 explosions along path' },
-    emp:          { name: 'Twin EMP',           dmgMult: 2.0, rateMult: 1.3, rangeMult: 1.25, ability: 'EMP Pulse: Stun ALL enemies for 4s' },
-    slowdown:     { name: 'Twin Slowdown',     dmgMult: 1.0, rateMult: 1.0, rangeMult: 1.5,  ability: 'Freeze: Stop all enemies in range for 3s' }
+    machinegun:   { name: 'Twin Machine Gun',  dmgMult: 1.6, rateMult: 1.1, rangeMult: 1.1, ability: 'Bullet Storm: 3s of 4x fire rate' },
+    sniper:       { name: 'Twin Sniper',       dmgMult: 1.6, rateMult: 1.1, rangeMult: 1.1, ability: 'Headshot: Instant kill <20% HP enemies in range' },
+    missile:      { name: 'Twin Missile',       dmgMult: 1.6, rateMult: 1.1, rangeMult: 1.1, ability: 'Barrage: Fire 8 missiles in all directions' },
+    flamethrower: { name: 'Twin Flamethrower', dmgMult: 1.6, rateMult: 1.1, rangeMult: 1.1, ability: 'Inferno: 360° flame ring for 3s' },
+    artillery:    { name: 'Twin Artillery',     dmgMult: 1.6, rateMult: 1.1, rangeMult: 1.1, ability: 'Carpet Bomb: 5 explosions along path' },
+    emp:          { name: 'Twin EMP',           dmgMult: 1.6, rateMult: 1.1, rangeMult: 1.1, ability: 'EMP Pulse: Stun ALL enemies for 4s' },
+    slowdown:     { name: 'Twin Slowdown',     dmgMult: 1.6, rateMult: 1.1, rangeMult: 1.1, ability: 'Freeze: Stop all enemies in range for 3s' }
 };
 
 // ---- Game State ----
 let gameState = {
     running: false,
-    money: 2500,
+    money: 2000,
     baseHP: BASE_MAX_HP,
     baseMaxHP: BASE_MAX_HP,
     wave: 0,
@@ -470,7 +474,8 @@ let gameState = {
     enemyProjectiles: [],
     // Enemy artillery - blasted tiles (new paths)
     blastTiles: [], // {col, row} tiles blasted open by enemy artillery
-    destroyedTiles: new Set() // tiles where towers were destroyed (unbuildable)
+    destroyedTiles: new Map(), // tile key -> wave when destroyed
+    repairVehicle: null // active repair vehicle
 };
 
 function initGrid() {
@@ -1775,6 +1780,45 @@ function drawEnemies() {
             ctx.fillStyle = darkenColor(baseColor, 0.5);
             ctx.fillRect(-size * 0.55, -size * 0.15, size * 0.2, size * 0.3);
             ctx.restore();
+        } else if (enemy.type === 'runner') {
+            // Fast runner - small, light blue, speed lines
+            ctx.fillStyle = '#81d4fa';
+            ctx.beginPath(); ctx.arc(ex, ey - 2, 4, 0, Math.PI * 2); ctx.fill(); // head
+            ctx.fillStyle = '#4fc3f7';
+            ctx.fillRect(ex - 2, ey + 1, 4, 5); // body
+            // Speed lines
+            ctx.strokeStyle = 'rgba(129,212,250,0.4)';
+            ctx.lineWidth = 1;
+            for (let sl = 0; sl < 3; sl++) {
+                ctx.beginPath();
+                ctx.moveTo(ex - 8 - sl * 4, ey - 2 + sl * 2);
+                ctx.lineTo(ex - 14 - sl * 4, ey - 2 + sl * 2);
+                ctx.stroke();
+            }
+            // Animated legs (fast)
+            const legPhase = Date.now() * 0.015;
+            ctx.strokeStyle = '#4fc3f7';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(ex, ey + 6); ctx.lineTo(ex - 3 * Math.sin(legPhase), ey + 10); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(ex, ey + 6); ctx.lineTo(ex + 3 * Math.sin(legPhase), ey + 10); ctx.stroke();
+        } else if (enemy.type === 'saboteur') {
+            // Saboteur - dark red, carries explosives
+            const angle = Math.atan2(facingY, facingX);
+            ctx.fillStyle = '#ff8a80';
+            ctx.beginPath(); ctx.arc(ex, ey - 3, 5, 0, Math.PI * 2); ctx.fill(); // head
+            ctx.fillStyle = '#e57373';
+            ctx.fillRect(ex - 3, ey + 1, 6, 6); // body
+            // Danger symbol
+            ctx.fillStyle = '#ff0';
+            ctx.font = 'bold 7px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('!', ex, ey - 8);
+            // Legs
+            const sLeg = Date.now() * 0.008;
+            ctx.strokeStyle = '#e57373';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(ex - 1, ey + 7); ctx.lineTo(ex - 3 * Math.sin(sLeg), ey + 11); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(ex + 1, ey + 7); ctx.lineTo(ex + 3 * Math.sin(sLeg), ey + 11); ctx.stroke();
         }
 
         ctx.restore();
@@ -2127,8 +2171,8 @@ function spawnEnemy(type, isBoss, waveNum) {
     const def = ENEMY_DEFS[type];
     const enemyPath = getEnemyPath();
     const start = enemyPath[0];
-    const hpScale = 1 + (waveNum - 1) * 0.10;
-    const bossScale = isBoss ? 5 : 1;
+    const hpScale = 1 + waveNum * 0.08;
+    const bossScale = isBoss ? 3 : 1;
 
     gameState.enemies.push({
         type,
@@ -2136,8 +2180,8 @@ function spawnEnemy(type, isBoss, waveNum) {
         y: start.y,
         hp: def.baseHP * hpScale * bossScale,
         maxHP: def.baseHP * hpScale * bossScale,
-        speed: def.speed * (isBoss ? 0.7 : 1),
-        baseDmg: def.baseDmg * (isBoss ? 3 : 1),
+        speed: def.speed * (isBoss ? 0.8 : 1),
+        baseDmg: def.baseDmg * (isBoss ? 2 : 1),
         color: def.color,
         size: def.size * (isBoss ? 1.8 : 1),
         isBoss,
@@ -2150,7 +2194,7 @@ function spawnEnemy(type, isBoss, waveNum) {
         slowTimer: 0,
         slowAmount: 0,
         stunTimer: 0,
-        money: Math.ceil((def.baseHP * hpScale * bossScale) / 12.5),
+        money: Math.ceil(def.baseHP * 0.08),
         surrenderChecked: false,
         // Shooting stats
         canShoot: def.canShoot || false,
@@ -2263,7 +2307,6 @@ function updateEnemyShooting(dt) {
         let closestDist = enemy.shootRange;
 
         for (const tower of gameState.towers) {
-            if (tower.repairing) continue; // Can't target towers being repaired
             const tp = gridCenter(tower.col, tower.row);
             const dist = Math.hypot(tp.x - enemy.x, tp.y - enemy.y);
             if (dist < closestDist) {
@@ -2346,8 +2389,17 @@ function destroyTower(tower) {
     const p = gridCenter(tower.col, tower.row);
 
     // Mark tile as destroyed (unbuildable)
+    // Recovery waves scale by tower cost and rank
+    const def = TOWER_DEFS[tower.type];
+    const rankIdx = RANKS.indexOf(getRank(tower));
+    // Recovery waves by tower cost tier + rank
+    // Cost tiers: $250=1, $750=1, $2000=2, $5000=2, $25000=3, $100000=4, $200000=5
+    const costTiers = { 250:3, 750:3, 2000:4, 5000:4, 25000:5, 100000:6, 200000:7 };
+    const costFactor = costTiers[def.cost] || Math.min(5, 1 + Math.floor(Math.log10(def.cost / 250)));
+    const rankFactor = Math.floor(rankIdx / 2); // Private/Corporal=0, Sergeant/Captain=1, General=2
+    const recoveryWaves = Math.min(10, costFactor + rankFactor); // 1-10 waves
     gameState.grid[tower.col][tower.row] = 3; // 3 = destroyed crater
-    gameState.destroyedTiles.add(`${tower.col},${tower.row}`);
+    gameState.destroyedTiles.set(`${tower.col},${tower.row}`, { wave: gameState.wave, recovery: recoveryWaves });
 
     // Explosion particles
     for (let i = 0; i < 12; i++) {
@@ -2933,7 +2985,7 @@ function fuseTowers(tower) {
     tower.kills += partner.kills;
     tower.fused = true;
     tower.fusionAbilityCooldown = 0;
-    tower.fusionAbilityMaxCD = 30; // 30 second cooldown
+    tower.fusionAbilityMaxCD = 40; // 40 second cooldown
     tower.abilityActive = false;
     tower.abilityTimer = 0;
 
@@ -3120,7 +3172,7 @@ function placeTower(col, row, type) {
         targetEnemy: null,
         fused: false,
         fusionAbilityCooldown: 0,
-        fusionAbilityMaxCD: 30,
+        fusionAbilityMaxCD: 40,
         abilityActive: false,
         abilityTimer: 0,
         hp: def.towerHP,
@@ -3376,16 +3428,36 @@ function generateWave(waveNum) {
     const enemies = [];
     const isBossWave = waveNum % 5 === 0;
 
-    const infantryCount = Math.floor(6 + waveNum * 2);
-    const jeepCount = waveNum >= 2 ? Math.floor(1 + waveNum * 0.7) : 0;
-    const tankCount = waveNum >= 4 ? Math.floor(waveNum * 0.4) : 0;
-    // Enemy artillery starts appearing at wave 3, scales up faster
-    const artCount = waveNum >= 3 ? Math.min(3, 1 + Math.floor((waveNum - 3) * 0.2)) : 0;
+    // Total enemies scales linearly
+    const totalEnemies = Math.floor(8 + waveNum * 2.5);
+
+    // Distribution with ±20% randomness
+    const randFactor = () => 0.8 + Math.random() * 0.4;
+
+    const infantryPct = (0.6 - Math.min(0.1, waveNum * 0.005)) * randFactor();
+    const jeepPct = waveNum >= 2 ? (0.25 * randFactor()) : 0;
+    const tankPct = waveNum >= 4 ? (0.1 * randFactor()) : 0;
+    const specialPct = waveNum >= 3 ? (0.12 * randFactor()) : 0;
+    const artPct = waveNum >= 5 ? (0.05 * randFactor()) : 0;
+
+    const total = infantryPct + jeepPct + tankPct + specialPct + artPct;
+
+    const infantryCount = Math.max(2, Math.round(totalEnemies * infantryPct / total));
+    const jeepCount = Math.round(totalEnemies * jeepPct / total);
+    const tankCount = Math.round(totalEnemies * tankPct / total);
+    const artCount = waveNum >= 5 ? Math.min(3, Math.round(totalEnemies * artPct / total)) : 0;
+    const specialCount = Math.round(totalEnemies * specialPct / total);
+
+    // Split specials between runners and saboteurs
+    const runnerCount = Math.ceil(specialCount * 0.6);
+    const saboteurCount = specialCount - runnerCount;
 
     for (let i = 0; i < infantryCount; i++) enemies.push({ type: 'infantry', isBoss: false });
     for (let i = 0; i < jeepCount; i++) enemies.push({ type: 'jeep', isBoss: false });
     for (let i = 0; i < tankCount; i++) enemies.push({ type: 'tank', isBoss: false });
     for (let i = 0; i < artCount; i++) enemies.push({ type: 'enemyArt', isBoss: false });
+    for (let i = 0; i < runnerCount; i++) enemies.push({ type: 'runner', isBoss: false });
+    for (let i = 0; i < saboteurCount; i++) enemies.push({ type: 'saboteur', isBoss: false });
 
     if (isBossWave) {
         const bossType = waveNum >= 20 ? 'tank' : waveNum >= 10 ? 'jeep' : 'tank';
@@ -3421,6 +3493,20 @@ function startWave() {
 
     document.getElementById('wave-number').textContent = gameState.wave;
 
+    // Recover destroyed tower tiles based on recovery time
+    const toRecover = [];
+    for (const [key, info] of gameState.destroyedTiles) {
+        if (gameState.wave - info.wave >= info.recovery) {
+            toRecover.push(key);
+        }
+    }
+    for (const key of toRecover) {
+        gameState.destroyedTiles.delete(key);
+        const [col, row] = key.split(',').map(Number);
+        if (gameState.grid[col]) {
+            gameState.grid[col][row] = 0; // back to buildable
+        }
+    }
 }
 
 function updateWave(dt) {
@@ -3605,7 +3691,7 @@ function updateTowerInfoPanel(tower) {
         repairBtn.style.cursor = 'not-allowed';
     } else if (tower.hp < tower.maxHP) {
         const missingHP = tower.maxHP - tower.hp;
-        const repairCost = Math.ceil(missingHP * 0.125); // $0.50 per HP
+        const repairCost = Math.ceil(missingHP * 0.4); // $0.50 per HP
         repairBtn.classList.remove('hidden');
         document.getElementById('repair-cost').textContent = repairCost;
         if (gameState.money < repairCost) {
@@ -3663,6 +3749,7 @@ function update(dt) {
     updateParticles(dt);
     updateAirstrikes(dt);
     updateFusionAbilities(dt);
+    updateRepairVehicle(dt);
 
     // Update info panel if a tower is selected
     if (gameState.selectedTower) {
@@ -3689,6 +3776,7 @@ function render() {
     drawAllies();
     drawProjectiles();
     drawEnemyProjectiles();
+    drawRepairVehicle();
     drawAirstrikeEffects();
     drawParticles();
 }
@@ -3717,7 +3805,7 @@ function gameOver() {
 function startGame() {
     gameState = {
         running: true,
-        money: 2500,
+        money: 2000,
         baseHP: BASE_MAX_HP,
         baseMaxHP: BASE_MAX_HP,
         wave: 0,
@@ -3746,7 +3834,8 @@ function startGame() {
         totalHPDestroyed: 0,
         enemyProjectiles: [],
         blastTiles: [],
-        destroyedTiles: new Set()
+        destroyedTiles: new Map(),
+        repairVehicle: null
     };
     // Reset pathSet to original BEFORE initGrid so blasted tiles are cleared
     pathSet.clear();
@@ -3821,12 +3910,19 @@ canvas.addEventListener('click', (e) => {
         return;
     }
 
-    // Check if clicking on an existing tower
+    // Check if clicking on an existing tower (toggle if same tower)
     const clickedTower = gameState.towers.find(t => t.col === grid.col && t.row === grid.row);
     if (clickedTower) {
-        gameState.selectedTower = clickedTower;
-        updateTowerInfoPanel(clickedTower);
+        if (gameState.selectedTower === clickedTower) {
+            // Clicking same tower - deselect
+            gameState.selectedTower = null;
+            document.getElementById('tower-info').classList.add('hidden');
+        } else {
+            gameState.selectedTower = clickedTower;
+            updateTowerInfoPanel(clickedTower);
+        }
     } else {
+        // Clicking empty tile or grass - close menu
         gameState.selectedTower = null;
         document.getElementById('tower-info').classList.add('hidden');
     }
@@ -3917,7 +4013,7 @@ document.getElementById('repair-tower-btn').addEventListener('click', () => {
     if (tower.hp >= tower.maxHP) return;
     if (tower.repairing) return; // Already repairing
     const missingHP = tower.maxHP - tower.hp;
-    const repairCost = Math.ceil(missingHP * 0.125);
+    const repairCost = Math.ceil(missingHP * 0.4);
     if (gameState.money < repairCost) return;
 
     gameState.money -= repairCost;
@@ -3955,6 +4051,145 @@ document.getElementById('fuse-tower-btn').addEventListener('click', () => {
     }
     updateTowerInfoPanel(tower);
 });
+
+// Repair Roads button - sends a repair vehicle from base
+document.getElementById('repair-roads-btn').addEventListener('click', () => {
+    if (gameState.blastTiles.length === 0) return;
+    if (gameState.money < 1000) return;
+    // Don't allow if a repair vehicle is already active
+    if (gameState.repairVehicle) return;
+
+    gameState.money -= 1000;
+
+    // Target the oldest blasted tile
+    const tile = gameState.blastTiles[0];
+    const basePt = PATH_CELLS[PATH_CELLS.length - 1];
+    const basePos = gridCenter(basePt.c, basePt.r);
+    const targetPos = gridCenter(tile.col, tile.row);
+
+    gameState.repairVehicle = {
+        x: basePos.x,
+        y: basePos.y,
+        targetX: targetPos.x,
+        targetY: targetPos.y,
+        baseX: basePos.x,
+        baseY: basePos.y,
+        targetTile: tile,
+        phase: 'going', // 'going', 'repairing', 'returning'
+        repairTimer: 0,
+        speed: 80
+    };
+
+    updateMoneyDisplay();
+    playSound('place');
+});
+
+// Update repair vehicle
+function updateRepairVehicle(dt) {
+    const rv = gameState.repairVehicle;
+    if (!rv) return;
+
+    if (rv.phase === 'going') {
+        const dx = rv.targetX - rv.x;
+        const dy = rv.targetY - rv.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 3) {
+            rv.phase = 'repairing';
+            rv.repairTimer = 1.5; // 1.5s to repair
+        } else {
+            rv.x += (dx / dist) * rv.speed * dt;
+            rv.y += (dy / dist) * rv.speed * dt;
+        }
+    } else if (rv.phase === 'repairing') {
+        rv.repairTimer -= dt;
+        // Spark particles while repairing
+        if (Math.random() < 0.3) {
+            gameState.particles.push({
+                x: rv.x + (Math.random() - 0.5) * 15,
+                y: rv.y + (Math.random() - 0.5) * 8,
+                vx: (Math.random() - 0.5) * 30,
+                vy: -15 - Math.random() * 20,
+                life: 0.3, maxLife: 0.3,
+                color: Math.random() < 0.5 ? '#ff9800' : '#ffeb3b', size: 2
+            });
+        }
+        if (rv.repairTimer <= 0) {
+            // Actually repair the tile
+            const tile = rv.targetTile;
+            gameState.blastTiles = gameState.blastTiles.filter(b => b !== tile);
+            pathSet.delete(`${tile.col},${tile.row}`);
+            if (gameState.grid[tile.col]) {
+                gameState.grid[tile.col][tile.row] = 0;
+            }
+            // Repair complete particles
+            for (let i = 0; i < 10; i++) {
+                gameState.particles.push({
+                    x: rv.x + (Math.random() - 0.5) * 20,
+                    y: rv.y + (Math.random() - 0.5) * 10,
+                    vx: (Math.random() - 0.5) * 40,
+                    vy: -20 - Math.random() * 30,
+                    life: 0.6, maxLife: 0.6,
+                    color: i < 5 ? '#8d6e63' : '#4caf50', size: 3
+                });
+            }
+            // Rebuild shortcut or clear
+            if (gameState.blastTiles.length === 0) {
+                shortcutWaypoints = null;
+                for (const enemy of gameState.enemies) {
+                    if (enemy.path !== pathWaypoints) {
+                        enemy.path = pathWaypoints;
+                        enemy.waypointIdx = 0;
+                    }
+                }
+            } else {
+                rebuildPathWithBlasts();
+            }
+            rv.phase = 'returning';
+        }
+    } else if (rv.phase === 'returning') {
+        const dx = rv.baseX - rv.x;
+        const dy = rv.baseY - rv.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 3) {
+            gameState.repairVehicle = null; // Done
+        } else {
+            rv.x += (dx / dist) * rv.speed * dt;
+            rv.y += (dy / dist) * rv.speed * dt;
+        }
+    }
+}
+
+// Draw repair vehicle
+function drawRepairVehicle() {
+    const rv = gameState.repairVehicle;
+    if (!rv) return;
+
+    const x = rv.x, y = rv.y;
+
+    // Vehicle body (orange construction truck)
+    ctx.fillStyle = '#ff8f00';
+    ctx.fillRect(x - 8, y - 6, 16, 8);
+    // Cab
+    ctx.fillStyle = '#ffa726';
+    ctx.fillRect(x - 10, y - 4, 4, 6);
+    // Wheels
+    ctx.fillStyle = '#333';
+    ctx.beginPath(); ctx.arc(x - 5, y + 3, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 5, y + 3, 2.5, 0, Math.PI * 2); ctx.fill();
+    // Crane/arm on top
+    ctx.strokeStyle = '#e65100';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + 2, y - 6);
+    ctx.lineTo(x + 2, y - 12);
+    ctx.lineTo(x + 8, y - 10);
+    ctx.stroke();
+    // Flashing light
+    if (Math.floor(Date.now() / 300) % 2 === 0) {
+        ctx.fillStyle = '#ff0';
+        ctx.beginPath(); ctx.arc(x, y - 8, 2, 0, Math.PI * 2); ctx.fill();
+    }
+}
 
 // Start / Restart
 document.getElementById('start-btn').addEventListener('click', () => {
