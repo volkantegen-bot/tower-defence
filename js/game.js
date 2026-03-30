@@ -2171,7 +2171,7 @@ function spawnEnemy(type, isBoss, waveNum) {
     const def = ENEMY_DEFS[type];
     const enemyPath = getEnemyPath();
     const start = enemyPath[0];
-    const hpScale = 1 + waveNum * 0.08;
+    const hpScale = 1 + waveNum * 0.05;
     const bossScale = isBoss ? 3 : 1;
 
     gameState.enemies.push({
@@ -2199,7 +2199,7 @@ function spawnEnemy(type, isBoss, waveNum) {
         // Shooting stats
         canShoot: def.canShoot || false,
         shootRange: def.shootRange || 0,
-        shootDamage: (def.shootDamage || 0) * (1 + (waveNum - 1) * 0.05),
+        shootDamage: (def.shootDamage || 0) * (1 + (waveNum - 1) * 0.03),
         shootRate: def.shootRate || 999,
         shootCooldown: Math.random() * 2, // stagger initial shots
         shootFlash: 0,
@@ -3429,7 +3429,7 @@ function generateWave(waveNum) {
     const isBossWave = waveNum % 5 === 0;
 
     // Total enemies scales linearly
-    const totalEnemies = Math.floor(8 + waveNum * 2.5);
+    const totalEnemies = Math.floor(8 + waveNum * 1.8);
 
     // Distribution with ±20% randomness
     const randFactor = () => 0.8 + Math.random() * 0.4;
