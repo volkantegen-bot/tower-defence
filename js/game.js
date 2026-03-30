@@ -411,18 +411,18 @@ const DIVISIONS = [
 // shootRange/shootDamage/shootRate: shooting stats
 // isArtillery: can blast open new paths
 const ENEMY_DEFS = {
-    infantry: { name: 'Infantry', baseHP: 90, speed: 30, baseDmg: 12, rankXP: 1, color: '#a5d6a7', size: 6,
-                canShoot: true, shootRange: 65, shootDamage: 4, shootRate: 1.8 },
-    jeep:     { name: 'Jeep',     baseHP: 2250, speed: 50, baseDmg: 30, rankXP: 3, color: '#fff176', size: 8,
-                canShoot: true, shootRange: 85, shootDamage: 10, shootRate: 1.3 },
-    tank:     { name: 'Tank',     baseHP: 7500, speed: 18, baseDmg: 100, rankXP: 10, color: '#ef9a9a', size: 12,
-                canShoot: true, shootRange: 105, shootDamage: 25, shootRate: 2.2 },
-    enemyArt: { name: 'Enemy Artillery', baseHP: 4500, speed: 14, baseDmg: 60, rankXP: 8, color: '#ff6e40', size: 14,
-                canShoot: true, shootRange: 125, shootDamage: 18, shootRate: 2.8, isArtillery: true },
-    runner:   { name: 'Runner', baseHP: 45, speed: 50, baseDmg: 8, rankXP: 1, color: '#81d4fa', size: 5,
+    infantry: { name: 'Infantry', baseHP: 60, speed: 25, baseDmg: 8, rankXP: 1, color: '#a5d6a7', size: 6,
+                canShoot: true, shootRange: 55, shootDamage: 2, shootRate: 2.5 },
+    jeep:     { name: 'Jeep',     baseHP: 1500, speed: 40, baseDmg: 20, rankXP: 3, color: '#fff176', size: 8,
+                canShoot: true, shootRange: 75, shootDamage: 6, shootRate: 1.8 },
+    tank:     { name: 'Tank',     baseHP: 5000, speed: 15, baseDmg: 60, rankXP: 10, color: '#ef9a9a', size: 12,
+                canShoot: true, shootRange: 95, shootDamage: 15, shootRate: 2.8 },
+    enemyArt: { name: 'Enemy Artillery', baseHP: 3000, speed: 12, baseDmg: 40, rankXP: 8, color: '#ff6e40', size: 14,
+                canShoot: true, shootRange: 110, shootDamage: 10, shootRate: 3.5, isArtillery: true },
+    runner:   { name: 'Runner', baseHP: 30, speed: 45, baseDmg: 5, rankXP: 1, color: '#81d4fa', size: 5,
                 canShoot: false, shootRange: 0, shootDamage: 0, shootRate: 999 },
-    saboteur: { name: 'Saboteur', baseHP: 120, speed: 25, baseDmg: 5, rankXP: 2, color: '#ff8a80', size: 7,
-                canShoot: true, shootRange: 95, shootDamage: 30, shootRate: 1.8, targetsTowersOnly: true }
+    saboteur: { name: 'Saboteur', baseHP: 80, speed: 22, baseDmg: 3, rankXP: 2, color: '#ff8a80', size: 7,
+                canShoot: true, shootRange: 80, shootDamage: 15, shootRate: 2.5, targetsTowersOnly: true }
 };
 
 // ---- Fusion Tower Bonuses ----
@@ -439,7 +439,7 @@ const FUSION_BONUSES = {
 // ---- Game State ----
 let gameState = {
     running: false,
-    money: 2000,
+    money: 3000,
     baseHP: BASE_MAX_HP,
     baseMaxHP: BASE_MAX_HP,
     wave: 0,
@@ -2171,7 +2171,7 @@ function spawnEnemy(type, isBoss, waveNum) {
     const def = ENEMY_DEFS[type];
     const enemyPath = getEnemyPath();
     const start = enemyPath[0];
-    const hpScale = 1 + waveNum * 0.05;
+    const hpScale = 1 + waveNum * 0.04;
     const bossScale = isBoss ? 3 : 1;
 
     gameState.enemies.push({
@@ -3429,23 +3429,23 @@ function generateWave(waveNum) {
     const isBossWave = waveNum % 5 === 0;
 
     // Total enemies scales linearly
-    const totalEnemies = Math.floor(8 + waveNum * 1.8);
+    const totalEnemies = Math.floor(6 + waveNum * 1.5);
 
     // Distribution with ±20% randomness
     const randFactor = () => 0.8 + Math.random() * 0.4;
 
     const infantryPct = (0.6 - Math.min(0.1, waveNum * 0.005)) * randFactor();
     const jeepPct = waveNum >= 4 ? (0.05 + Math.min(0.20, (waveNum - 4) * 0.03)) * randFactor() : 0;
-    const tankPct = waveNum >= 6 ? (0.1 * randFactor()) : 0;
-    const specialPct = waveNum >= 5 ? (0.10 * randFactor()) : 0;
-    const artPct = waveNum >= 8 ? (0.05 * randFactor()) : 0;
+    const tankPct = waveNum >= 8 ? (0.1 * randFactor()) : 0;
+    const specialPct = waveNum >= 6 ? (0.08 * randFactor()) : 0;
+    const artPct = waveNum >= 10 ? (0.05 * randFactor()) : 0;
 
     const total = infantryPct + jeepPct + tankPct + specialPct + artPct;
 
     const infantryCount = Math.max(2, Math.round(totalEnemies * infantryPct / total));
     const jeepCount = Math.round(totalEnemies * jeepPct / total);
     const tankCount = Math.round(totalEnemies * tankPct / total);
-    const artCount = waveNum >= 8 ? Math.min(3, Math.round(totalEnemies * artPct / total)) : 0;
+    const artCount = waveNum >= 10 ? Math.min(3, Math.round(totalEnemies * artPct / total)) : 0;
     const specialCount = Math.round(totalEnemies * specialPct / total);
 
     // Split specials between runners and saboteurs
@@ -3805,7 +3805,7 @@ function gameOver() {
 function startGame() {
     gameState = {
         running: true,
-        money: 2000,
+        money: 3000,
         baseHP: BASE_MAX_HP,
         baseMaxHP: BASE_MAX_HP,
         wave: 0,
