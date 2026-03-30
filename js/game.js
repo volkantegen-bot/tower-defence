@@ -250,9 +250,9 @@ const BASE_MAX_HP = 100;
 
 // Commander Ability costs
 const ABILITY_COSTS = {
-    airstrike: 150,
-    landmine: 80,
-    supply: 200
+    airstrike: 75,
+    landmine: 40,
+    supply: 100
 };
 
 // ---- Zoom & Pan State ----
@@ -1525,10 +1525,10 @@ function drawEnemies() {
             facingY = (nxt.y - ey) / fd;
         }
 
-        // Shadow
+        // Shadow (isometric)
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
         ctx.beginPath();
-        ctx.ellipse(ex, ey + size * 0.5, size * 0.9, size * 0.3, 0, 0, Math.PI * 2);
+        ctx.ellipse(ex, ey + size * 0.4, size * 1.0, size * 0.35, 0, 0, Math.PI * 2);
         ctx.fill();
 
         // Boss glow aura
@@ -1555,255 +1555,265 @@ function drawEnemies() {
         const eTime = Date.now() * 0.001;
 
         if (enemy.type === 'infantry') {
-            // Detailed soldier figure
-            const legSpread = Math.sin(Date.now() * 0.008 + enemy.waypointIdx) * 2.5;
-            // Boots
-            ctx.fillStyle = '#333';
-            ctx.beginPath(); ctx.arc(ex - 2 - legSpread, ey + size * 0.65, 1.8, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(ex + 2 + legSpread, ey + size * 0.65, 1.8, 0, Math.PI * 2); ctx.fill();
-            // Legs
-            ctx.strokeStyle = darkenColor(baseColor, 0.5);
+            // Isometric soldier - drawn from above at angle
+            const legPhase = Math.sin(Date.now() * 0.008 + enemy.waypointIdx) * 2;
+            ctx.save();
+            ctx.translate(ex, ey);
+            // Isometric body shadow/base
+            ctx.fillStyle = darkenColor(baseColor, 0.5);
+            ctx.beginPath(); ctx.ellipse(0, 2, 5, 3, 0, 0, Math.PI * 2); ctx.fill();
+            // Legs (isometric spread)
+            ctx.strokeStyle = darkenColor(baseColor, 0.45);
             ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(ex - 2, ey + 1); ctx.lineTo(ex - 2 - legSpread, ey + size * 0.6); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(ex + 2, ey + 1); ctx.lineTo(ex + 2 + legSpread, ey + size * 0.6); ctx.stroke();
-            // Body (torso) with gradient
-            const bodyGrad = ctx.createLinearGradient(ex - 4, ey - size * 0.5, ex + 4, ey + 2);
+            ctx.beginPath(); ctx.moveTo(-1, 1); ctx.lineTo(-2 - legPhase, 5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(1, 1); ctx.lineTo(2 + legPhase, 5); ctx.stroke();
+            // Boots
+            ctx.fillStyle = '#2a2a2a';
+            ctx.beginPath(); ctx.ellipse(-2 - legPhase, 5.5, 2, 1, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(2 + legPhase, 5.5, 2, 1, 0, 0, Math.PI * 2); ctx.fill();
+            // Body (torso) - isometric diamond-ish shape
+            const bodyGrad = ctx.createLinearGradient(-4, -6, 4, 2);
             bodyGrad.addColorStop(0, baseColor);
-            bodyGrad.addColorStop(1, darkenColor(baseColor, 0.7));
+            bodyGrad.addColorStop(1, darkenColor(baseColor, 0.65));
             ctx.fillStyle = bodyGrad;
-            roundRect(ex - 4, ey - size * 0.5, 8, size * 0.75, 2);
-            ctx.fill();
-            ctx.strokeStyle = darkenColor(baseColor, 0.6);
-            ctx.lineWidth = 0.7;
-            roundRect(ex - 4, ey - size * 0.5, 8, size * 0.75, 2);
-            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, -7); ctx.lineTo(4, -2); ctx.lineTo(3, 2); ctx.lineTo(-3, 2); ctx.lineTo(-4, -2);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.5);
+            ctx.lineWidth = 0.6; ctx.stroke();
             // Belt
-            ctx.fillStyle = darkenColor(baseColor, 0.4);
-            ctx.fillRect(ex - 4, ey - 1, 8, 2);
+            ctx.fillStyle = darkenColor(baseColor, 0.35);
+            ctx.fillRect(-3, -1, 6, 1.5);
             // Arms
-            ctx.strokeStyle = darkenColor(baseColor, 0.65);
-            ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(ex - 4, ey - size * 0.3); ctx.lineTo(ex - 5, ey); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(ex + 4, ey - size * 0.3);
-            ctx.lineTo(ex + 3 + facingX * 4, ey - 2 + facingY * 4); ctx.stroke();
-            // Helmet with detail
-            ctx.fillStyle = darkenColor(baseColor, 0.55);
-            ctx.beginPath(); ctx.arc(ex, ey - size * 0.58, 4.5, 0, Math.PI * 2); ctx.fill();
-            // Helmet rim
-            ctx.fillStyle = darkenColor(baseColor, 0.45);
-            ctx.beginPath(); ctx.ellipse(ex, ey - size * 0.52, 5.5, 2.2, 0, Math.PI, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.6);
+            ctx.lineWidth = 1.8;
+            ctx.beginPath(); ctx.moveTo(-4, -3); ctx.lineTo(-5, 0); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(4, -3); ctx.lineTo(3 + facingX * 5, -1 + facingY * 3); ctx.stroke();
+            // Helmet (isometric oval)
+            ctx.fillStyle = darkenColor(baseColor, 0.5);
+            ctx.beginPath(); ctx.ellipse(0, -8, 5, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = darkenColor(baseColor, 0.4);
+            ctx.beginPath(); ctx.ellipse(0, -7, 5.5, 2, 0, 0, Math.PI * 2); ctx.fill(); // brim
             // Helmet highlight
-            ctx.fillStyle = 'rgba(255,255,255,0.1)';
-            ctx.beginPath(); ctx.arc(ex - 1, ey - size * 0.65, 2, 0, Math.PI * 2); ctx.fill();
-            // Face (skin tone)
+            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+            ctx.beginPath(); ctx.ellipse(-1, -9, 2.5, 1.5, -0.3, 0, Math.PI * 2); ctx.fill();
+            // Face
             ctx.fillStyle = '#c8a882';
-            ctx.beginPath(); ctx.arc(ex, ey - size * 0.42, 2.5, 0, Math.PI * 2); ctx.fill();
-            // Weapon (rifle with detail)
+            ctx.beginPath(); ctx.ellipse(0, -5.5, 2.5, 1.8, 0, 0, Math.PI * 2); ctx.fill();
+            // Weapon (rifle)
             ctx.strokeStyle = '#444';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(ex + 3, ey - 3);
-            ctx.lineTo(ex + 3 + facingX * 8, ey - 3 + facingY * 8);
+            ctx.moveTo(3, -3);
+            ctx.lineTo(3 + facingX * 9, -3 + facingY * 5);
             ctx.stroke();
-            // Rifle stock
             ctx.strokeStyle = '#5a3a20';
             ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(ex + 3, ey - 3);
-            ctx.lineTo(ex + 2, ey);
-            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(3, -3); ctx.lineTo(2, 0); ctx.stroke();
+            ctx.restore();
 
         } else if (enemy.type === 'jeep') {
-            // Detailed military jeep
-            const angle = Math.atan2(facingY, facingX);
+            // Isometric jeep - drawn as diamond shape from above
+            const s = size;
+            const dx = facingX, dy = facingY;
             ctx.save();
             ctx.translate(ex, ey);
-            ctx.rotate(angle);
-            // Undercarriage
-            ctx.fillStyle = '#1a1a1a';
-            roundRect(-size * 0.65, -size * 0.3, size * 1.3, size * 0.6, 1);
-            ctx.fill();
-            // Body with gradient
-            const jGrad = ctx.createLinearGradient(0, -size * 0.4, 0, size * 0.4);
-            jGrad.addColorStop(0, baseColor);
-            jGrad.addColorStop(1, darkenColor(baseColor, 0.7));
-            ctx.fillStyle = jGrad;
-            roundRect(-size * 0.7, -size * 0.35, size * 1.4, size * 0.7, 3);
-            ctx.fill();
-            ctx.strokeStyle = darkenColor(baseColor, 0.5);
-            ctx.lineWidth = 1;
-            roundRect(-size * 0.7, -size * 0.35, size * 1.4, size * 0.7, 3);
-            ctx.stroke();
-            // Hood details
+            // Body - isometric diamond
+            const bodyW = s * 0.9, bodyH = s * 0.45;
             ctx.fillStyle = darkenColor(baseColor, 0.8);
-            ctx.fillRect(-size * 0.65, -size * 0.25, size * 0.5, size * 0.5);
-            // Windshield with glare
-            const wsGrad = ctx.createLinearGradient(size * 0.15, -size * 0.3, size * 0.5, size * 0.3);
-            wsGrad.addColorStop(0, 'rgba(150,210,255,0.6)');
-            wsGrad.addColorStop(0.5, 'rgba(100,180,255,0.3)');
-            wsGrad.addColorStop(1, 'rgba(80,160,240,0.5)');
-            ctx.fillStyle = wsGrad;
-            ctx.fillRect(size * 0.15, -size * 0.28, size * 0.35, size * 0.56);
-            ctx.strokeStyle = '#555';
-            ctx.lineWidth = 0.5;
-            ctx.strokeRect(size * 0.15, -size * 0.28, size * 0.35, size * 0.56);
-            // Wheels with rubber detail
-            for (const [wx, wy] of [[-size*0.45,-size*0.42],[-size*0.45,size*0.42],[size*0.35,-size*0.42],[size*0.35,size*0.42]]) {
+            ctx.beginPath();
+            ctx.moveTo(dx * bodyW, dy * bodyW * 0.5);
+            ctx.lineTo(-dy * bodyH, dx * bodyH);
+            ctx.lineTo(-dx * bodyW, -dy * bodyW * 0.5);
+            ctx.lineTo(dy * bodyH, -dx * bodyH);
+            ctx.closePath(); ctx.fill();
+            // Top face (lighter)
+            ctx.fillStyle = baseColor;
+            ctx.beginPath();
+            ctx.moveTo(dx * bodyW, dy * bodyW * 0.5 - 3);
+            ctx.lineTo(-dy * bodyH, dx * bodyH - 3);
+            ctx.lineTo(-dx * bodyW, -dy * bodyW * 0.5 - 3);
+            ctx.lineTo(dy * bodyH, -dx * bodyH - 3);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.5);
+            ctx.lineWidth = 0.8; ctx.stroke();
+            // Windshield
+            const wsX = dx * bodyW * 0.3, wsY = dy * bodyW * 0.3 * 0.5 - 4;
+            ctx.fillStyle = 'rgba(130,200,255,0.6)';
+            ctx.beginPath();
+            ctx.arc(wsX, wsY, 3, 0, Math.PI * 2);
+            ctx.fill();
+            // Wheels (4 dark circles at corners)
+            for (const m of [-1, 1]) {
+                const wx1 = dx * bodyW * 0.6 + m * (-dy * bodyH * 0.8);
+                const wy1 = dy * bodyW * 0.6 * 0.5 + m * (dx * bodyH * 0.8);
+                const wx2 = -dx * bodyW * 0.6 + m * (-dy * bodyH * 0.8);
+                const wy2 = -dy * bodyW * 0.6 * 0.5 + m * (dx * bodyH * 0.8);
                 ctx.fillStyle = '#1a1a1a';
-                ctx.beginPath(); ctx.arc(wx, wy, 3, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = '#333';
-                ctx.beginPath(); ctx.arc(wx, wy, 1.5, 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = '#444';
-                ctx.lineWidth = 0.5; ctx.stroke();
+                ctx.beginPath(); ctx.ellipse(wx1, wy1, 2.5, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(wx2, wy2, 2.5, 1.5, 0, 0, Math.PI * 2); ctx.fill();
             }
-            // Headlights
-            ctx.fillStyle = '#ffee88';
-            ctx.beginPath(); ctx.arc(-size * 0.65, -size * 0.2, 1.5, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(-size * 0.65, size * 0.2, 1.5, 0, Math.PI * 2); ctx.fill();
-            // Roof gun mount
-            ctx.fillStyle = '#666';
-            ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#444';
-            ctx.fillRect(-1, -1.5, 9, 3);
-            ctx.fillStyle = '#555';
-            ctx.fillRect(7, -2, 2, 4);
+            // Gun on top
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(dx * 8, dy * 8 * 0.5 - 3); ctx.stroke();
             ctx.restore();
 
         } else if (enemy.type === 'tank') {
-            // Detailed battle tank
-            const angle = Math.atan2(facingY, facingX);
+            // Isometric battle tank - diamond hull with turret
+            const s = size;
+            const dx = facingX, dy = facingY;
             ctx.save();
             ctx.translate(ex, ey);
-            ctx.rotate(angle);
-            // Track assemblies with wheel detail
-            for (const ty of [-size * 0.5, size * 0.27]) {
+            // Tracks (two parallel lines offset from body)
+            const perpX = -dy, perpY = dx; // perpendicular direction
+            for (const m of [-1, 1]) {
+                const offX = m * perpX * s * 0.35;
+                const offY = m * perpY * s * 0.35 * 0.5;
                 ctx.fillStyle = '#3a3a3a';
-                roundRect(-size * 0.72, ty, size * 1.44, size * 0.23, 2);
-                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(offX + dx * s * 0.7, offY + dy * s * 0.7 * 0.5);
+                ctx.lineTo(offX + perpX * 3, offY + perpY * 3 * 0.5);
+                ctx.lineTo(offX - dx * s * 0.7, offY - dy * s * 0.7 * 0.5);
+                ctx.lineTo(offX - perpX * 3, offY - perpY * 3 * 0.5);
+                ctx.closePath(); ctx.fill();
                 ctx.strokeStyle = '#2a2a2a';
-                ctx.lineWidth = 0.5;
-                roundRect(-size * 0.72, ty, size * 1.44, size * 0.23, 2);
-                ctx.stroke();
-                // Track links
-                ctx.strokeStyle = '#4a4a4a';
-                ctx.lineWidth = 0.8;
-                for (let i = 0; i < 7; i++) {
-                    const tx = -size * 0.6 + i * size * 0.2;
-                    ctx.beginPath(); ctx.moveTo(tx, ty + 1); ctx.lineTo(tx, ty + size * 0.21); ctx.stroke();
-                }
-                // Road wheels
-                ctx.fillStyle = '#555';
-                for (let i = 0; i < 4; i++) {
-                    const wx = -size * 0.5 + i * size * 0.33;
-                    ctx.beginPath(); ctx.arc(wx, ty + size * 0.115, 2.5, 0, Math.PI * 2); ctx.fill();
-                    ctx.fillStyle = '#444';
-                    ctx.beginPath(); ctx.arc(wx, ty + size * 0.115, 1.2, 0, Math.PI * 2); ctx.fill();
-                    ctx.fillStyle = '#555';
-                }
+                ctx.lineWidth = 0.5; ctx.stroke();
             }
-            // Hull with gradient
-            const hGrad = ctx.createLinearGradient(0, -size * 0.35, 0, size * 0.35);
-            hGrad.addColorStop(0, baseColor);
-            hGrad.addColorStop(1, darkenColor(baseColor, 0.65));
-            ctx.fillStyle = hGrad;
-            roundRect(-size * 0.58, -size * 0.32, size * 1.16, size * 0.64, 3);
-            ctx.fill();
-            ctx.strokeStyle = darkenColor(baseColor, 0.5);
-            ctx.lineWidth = 1;
-            roundRect(-size * 0.58, -size * 0.32, size * 1.16, size * 0.64, 3);
-            ctx.stroke();
-            // Hull details - hatches, vents
-            ctx.fillStyle = darkenColor(baseColor, 0.6);
-            ctx.fillRect(-size * 0.45, -size * 0.15, size * 0.3, size * 0.3);
-            // Turret with gradient
-            const tGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.35);
-            tGrad.addColorStop(0, darkenColor(baseColor, 0.9));
-            tGrad.addColorStop(1, darkenColor(baseColor, 0.6));
-            ctx.fillStyle = tGrad;
-            ctx.beginPath(); ctx.arc(0, 0, size * 0.32, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = darkenColor(baseColor, 0.45);
-            ctx.lineWidth = 1; ctx.stroke();
-            // Commander hatch
-            ctx.fillStyle = darkenColor(baseColor, 0.5);
-            ctx.beginPath(); ctx.arc(-size * 0.1, -size * 0.1, 2, 0, Math.PI * 2); ctx.fill();
-            // Main gun with muzzle brake
-            ctx.fillStyle = '#4a4a4a';
-            ctx.fillRect(size * 0.28, -2.5, size * 0.6, 5);
-            ctx.strokeStyle = '#333';
-            ctx.lineWidth = 0.5;
-            ctx.strokeRect(size * 0.28, -2.5, size * 0.6, 5);
-            // Muzzle brake
-            ctx.fillStyle = '#555';
-            ctx.fillRect(size * 0.82, -3.5, 3, 7);
-            // Reactive armor blocks
+            // Hull body - isometric diamond
+            const hW = s * 0.65, hH = s * 0.3;
+            // Side face (darker)
             ctx.fillStyle = darkenColor(baseColor, 0.55);
-            ctx.fillRect(-size * 0.55, -size * 0.28, 3, size * 0.56);
+            ctx.beginPath();
+            ctx.moveTo(dx * hW, dy * hW * 0.5);
+            ctx.lineTo(-perpX * hH, -perpY * hH * 0.5);
+            ctx.lineTo(-perpX * hH, -perpY * hH * 0.5 + 4);
+            ctx.lineTo(dx * hW, dy * hW * 0.5 + 4);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(-perpX * hH, -perpY * hH * 0.5);
+            ctx.lineTo(-dx * hW, -dy * hW * 0.5);
+            ctx.lineTo(-dx * hW, -dy * hW * 0.5 + 4);
+            ctx.lineTo(-perpX * hH, -perpY * hH * 0.5 + 4);
+            ctx.closePath(); ctx.fill();
+            // Top face
+            ctx.fillStyle = baseColor;
+            ctx.beginPath();
+            ctx.moveTo(dx * hW, dy * hW * 0.5);
+            ctx.lineTo(-perpX * hH, -perpY * hH * 0.5);
+            ctx.lineTo(-dx * hW, -dy * hW * 0.5);
+            ctx.lineTo(perpX * hH, perpY * hH * 0.5);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.4);
+            ctx.lineWidth = 0.8; ctx.stroke();
+            // Turret (ellipse on top)
+            ctx.fillStyle = darkenColor(baseColor, 0.75);
+            ctx.beginPath();
+            ctx.ellipse(0, -2, s * 0.25, s * 0.15, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.4);
+            ctx.lineWidth = 0.8; ctx.stroke();
+            // Hatch
+            ctx.fillStyle = darkenColor(baseColor, 0.5);
+            ctx.beginPath(); ctx.ellipse(-dx * 3, -dy * 1.5 - 2, 2, 1.2, 0, 0, Math.PI * 2); ctx.fill();
+            // Main gun barrel
+            ctx.strokeStyle = '#4a4a4a';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(dx * s * 0.2, dy * s * 0.1 - 2);
+            ctx.lineTo(dx * s * 0.9, dy * s * 0.45 - 2);
+            ctx.stroke();
+            // Muzzle brake
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(dx * s * 0.85, dy * s * 0.42 - 2);
+            ctx.lineTo(dx * s * 0.95, dy * s * 0.47 - 2);
+            ctx.stroke();
             ctx.restore();
 
         } else if (enemy.type === 'enemyArt') {
-            // Detailed self-propelled artillery
-            const angle = Math.atan2(facingY, facingX);
+            // Isometric self-propelled artillery - larger hull, long cannon
+            const s = size;
+            const dx = facingX, dy = facingY;
+            const perpX = -dy, perpY = dx;
             ctx.save();
             ctx.translate(ex, ey);
-            ctx.rotate(angle);
-            // Track assemblies
-            for (const ty of [-size * 0.52, size * 0.3]) {
+            // Tracks
+            for (const m of [-1, 1]) {
+                const offX = m * perpX * s * 0.4;
+                const offY = m * perpY * s * 0.4 * 0.5;
                 ctx.fillStyle = '#333';
-                roundRect(-size * 0.78, ty, size * 1.56, size * 0.22, 2);
-                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(offX + dx * s * 0.8, offY + dy * s * 0.8 * 0.5);
+                ctx.lineTo(offX + perpX * 3.5, offY + perpY * 3.5 * 0.5);
+                ctx.lineTo(offX - dx * s * 0.8, offY - dy * s * 0.8 * 0.5);
+                ctx.lineTo(offX - perpX * 3.5, offY - perpY * 3.5 * 0.5);
+                ctx.closePath(); ctx.fill();
                 ctx.strokeStyle = '#252525';
-                ctx.lineWidth = 0.5;
-                roundRect(-size * 0.78, ty, size * 1.56, size * 0.22, 2);
-                ctx.stroke();
-                // Track links
-                ctx.strokeStyle = '#444';
-                ctx.lineWidth = 0.6;
-                for (let i = 0; i < 8; i++) {
-                    const tx = -size * 0.65 + i * size * 0.19;
-                    ctx.beginPath(); ctx.moveTo(tx, ty + 1); ctx.lineTo(tx, ty + size * 0.2); ctx.stroke();
-                }
+                ctx.lineWidth = 0.5; ctx.stroke();
             }
-            // Hull with gradient
-            const ahGrad = ctx.createLinearGradient(0, -size * 0.4, 0, size * 0.4);
-            ahGrad.addColorStop(0, baseColor);
-            ahGrad.addColorStop(1, darkenColor(baseColor, 0.6));
-            ctx.fillStyle = ahGrad;
-            roundRect(-size * 0.63, -size * 0.37, size * 1.26, size * 0.74, 3);
-            ctx.fill();
-            ctx.strokeStyle = darkenColor(baseColor, 0.45);
-            ctx.lineWidth = 1;
-            roundRect(-size * 0.63, -size * 0.37, size * 1.26, size * 0.74, 3);
-            ctx.stroke();
-            // Turret housing
-            const thGrad = ctx.createLinearGradient(-size * 0.3, 0, size * 0.3, 0);
-            thGrad.addColorStop(0, darkenColor(baseColor, 0.8));
-            thGrad.addColorStop(1, darkenColor(baseColor, 0.6));
-            ctx.fillStyle = thGrad;
-            roundRect(-size * 0.32, -size * 0.27, size * 0.64, size * 0.54, 3);
-            ctx.fill();
-            ctx.strokeStyle = darkenColor(baseColor, 0.4);
-            ctx.lineWidth = 0.5;
-            roundRect(-size * 0.32, -size * 0.27, size * 0.64, size * 0.54, 3);
-            ctx.stroke();
-            // Long cannon with reinforcement rings
-            ctx.fillStyle = '#4a4a4a';
-            ctx.fillRect(size * 0.22, -3.5, size * 0.85, 7);
-            ctx.strokeStyle = '#333';
-            ctx.lineWidth = 0.5;
-            ctx.strokeRect(size * 0.22, -3.5, size * 0.85, 7);
-            // Reinforcement rings
-            ctx.fillStyle = '#555';
-            ctx.fillRect(size * 0.4, -4, 2, 8);
-            ctx.fillRect(size * 0.6, -4, 2, 8);
-            // Muzzle brake (larger)
-            ctx.fillStyle = '#666';
-            ctx.fillRect(size * 0.95, -5, 4, 10);
-            ctx.fillStyle = '#555';
-            ctx.fillRect(size * 0.97, -4, 2, 2);
-            ctx.fillRect(size * 0.97, 2, 2, 2);
-            // Ammo hatch
+            // Hull - isometric diamond (larger than tank)
+            const hW = s * 0.75, hH = s * 0.35;
+            // Side faces
             ctx.fillStyle = darkenColor(baseColor, 0.5);
-            ctx.fillRect(-size * 0.55, -size * 0.15, size * 0.2, size * 0.3);
+            ctx.beginPath();
+            ctx.moveTo(dx * hW, dy * hW * 0.5);
+            ctx.lineTo(-perpX * hH, -perpY * hH * 0.5);
+            ctx.lineTo(-perpX * hH, -perpY * hH * 0.5 + 5);
+            ctx.lineTo(dx * hW, dy * hW * 0.5 + 5);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(-perpX * hH, -perpY * hH * 0.5);
+            ctx.lineTo(-dx * hW, -dy * hW * 0.5);
+            ctx.lineTo(-dx * hW, -dy * hW * 0.5 + 5);
+            ctx.lineTo(-perpX * hH, -perpY * hH * 0.5 + 5);
+            ctx.closePath(); ctx.fill();
+            // Top face
+            ctx.fillStyle = baseColor;
+            ctx.beginPath();
+            ctx.moveTo(dx * hW, dy * hW * 0.5);
+            ctx.lineTo(-perpX * hH, -perpY * hH * 0.5);
+            ctx.lineTo(-dx * hW, -dy * hW * 0.5);
+            ctx.lineTo(perpX * hH, perpY * hH * 0.5);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.35);
+            ctx.lineWidth = 0.8; ctx.stroke();
+            // Turret housing (rectangular on top)
+            ctx.fillStyle = darkenColor(baseColor, 0.7);
+            ctx.beginPath();
+            ctx.moveTo(dx * s * 0.2, dy * s * 0.1 - 3);
+            ctx.lineTo(-perpX * s * 0.18, -perpY * s * 0.09 - 3);
+            ctx.lineTo(-dx * s * 0.25, -dy * s * 0.12 - 3);
+            ctx.lineTo(perpX * s * 0.18, perpY * s * 0.09 - 3);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = darkenColor(baseColor, 0.4);
+            ctx.lineWidth = 0.6; ctx.stroke();
+            // Long cannon barrel
+            ctx.strokeStyle = '#4a4a4a';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(dx * s * 0.2, dy * s * 0.1 - 3);
+            ctx.lineTo(dx * s * 1.1, dy * s * 0.55 - 3);
+            ctx.stroke();
+            // Reinforcement rings
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(dx * s * 0.5, dy * s * 0.25 - 3);
+            ctx.lineTo(dx * s * 0.55, dy * s * 0.27 - 3);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(dx * s * 0.75, dy * s * 0.37 - 3);
+            ctx.lineTo(dx * s * 0.8, dy * s * 0.4 - 3);
+            ctx.stroke();
+            // Muzzle brake
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 7;
+            ctx.beginPath();
+            ctx.moveTo(dx * s * 1.05, dy * s * 0.52 - 3);
+            ctx.lineTo(dx * s * 1.12, dy * s * 0.56 - 3);
+            ctx.stroke();
             ctx.restore();
         } else if (enemy.type === 'runner') {
             // Fast runner - small, light blue, speed lines
@@ -2222,7 +2232,7 @@ function spawnEnemy(type, isBoss, waveNum) {
     const enemyPath = getEnemyPath();
     const start = enemyPath[0];
     const hpScale = 1 + waveNum * 0.04;
-    const bossScale = isBoss ? 3 : 1;
+    const bossScale = isBoss ? 6 : 1;
 
     gameState.enemies.push({
         type,
@@ -2883,8 +2893,8 @@ function useAirstrike(screenX, screenY) {
     gameState.commandPoints -= ABILITY_COSTS.airstrike;
     updateCPDisplay();
 
-    const radius = 80;
-    const damage = 150 + gameState.wave * 20;
+    const radius = 120;
+    const damage = 300 + gameState.wave * 40;
 
     // Visual effect
     gameState.airstrikeEffects.push({
@@ -2908,8 +2918,8 @@ function useLandmine(col, row) {
     gameState.landmines.push({
         x: p.x, y: p.y,
         col, row,
-        damage: 200 + gameState.wave * 15,
-        radius: 50
+        damage: 400 + gameState.wave * 30,
+        radius: 80
     });
 }
 
@@ -4201,7 +4211,7 @@ document.getElementById('fuse-tower-btn').addEventListener('click', () => {
 // Repair Roads button - enters selection mode to pick a blasted tile
 document.getElementById('repair-roads-btn').addEventListener('click', () => {
     if (gameState.blastTiles.length === 0) return;
-    if (gameState.money < 1000) return;
+    if (gameState.money < 500) return;
     if (gameState.repairVehicle) return;
 
     // Toggle repair selection mode
@@ -4223,7 +4233,7 @@ document.getElementById('repair-roads-btn').addEventListener('click', () => {
 
 // Dispatch repair vehicle to a specific blasted tile
 function dispatchRepairVehicle(tile) {
-    gameState.money -= 1000;
+    gameState.money -= 500;
     const basePt = PATH_CELLS[PATH_CELLS.length - 1];
     const basePos = gridCenter(basePt.c, basePt.r);
     const targetPos = gridCenter(tile.col, tile.row);
