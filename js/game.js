@@ -746,7 +746,7 @@ const BASE_MAX_HP = 100;
 const ABILITY_COSTS = {
     airstrike: 75,
     landmine: 40,
-    supply: 1000
+    supply: 220
 };
 
 // ---- Zoom & Pan State ----
@@ -878,55 +878,55 @@ const TOWER_DEFS = {
         name: 'Machine Gun', cost: 300, damage: 12, fireRate: 0.18, range: 108,
         color: '#7cb342', projectileColor: '#ffeb3b', projectileSpeed: 600,
         splash: 0, slow: 0, stun: 0, dot: 0, description: 'Rapid fire, low damage',
-        unlockHP: 0, towerHP: 240
+        unlockHP: 0, towerHP: 220
     },
     slowdown: {
         name: 'Slowdown', cost: 700, damage: 0, fireRate: 0, range: 132,
         color: '#ab47bc', projectileColor: '#9c27b0', projectileSpeed: 0,
         splash: 0, slow: 0.5, stun: 0, dot: 0, description: 'Slows enemies, no damage',
-        unlockHP: 0, towerHP: 120
+        unlockHP: 0, towerHP: 140
     },
     sniper: {
         name: 'Sniper', cost: 1500, damage: 80, fireRate: 1.2, range: 240,
         color: '#5c6bc0', projectileColor: '#e0e0e0', projectileSpeed: 900,
         splash: 0, slow: 0, stun: 0, dot: 0, description: 'High damage, slow fire',
-        unlockHP: 3000, towerHP: 100
+        unlockHP: 3000, towerHP: 90
     },
     flamethrower: {
         name: 'Flamethrower', cost: 3500, damage: 15, fireRate: 0.2, range: 96,
         color: '#ff9800', projectileColor: '#ff6f00', projectileSpeed: 0,
-        splash: 0, slow: 0, stun: 0, dot: 5, description: 'Continuous cone, DOT',
-        unlockHP: 16000, towerHP: 400
+        splash: 0, slow: 0, stun: 0, dot: 6, description: 'Continuous cone, DOT',
+        unlockHP: 16000, towerHP: 320
     },
     missile: {
-        name: 'Missile Launcher', cost: 12000, damage: 40, fireRate: 1.4, range: 192,
+        name: 'Missile Launcher', cost: 12000, damage: 48, fireRate: 1.4, range: 192,
         color: '#ef5350', projectileColor: '#ff5722', projectileSpeed: 400,
-        splash: 50, slow: 0, stun: 0, dot: 0, description: 'Area splash damage',
+        splash: 56, slow: 0, stun: 0, dot: 0, description: 'Area splash damage',
         unlockHP: 50000, towerHP: 500
     },
     emp: {
         name: 'EMP', cost: 30000, damage: 20, fireRate: 1.2, range: 156,
         color: '#29b6f6', projectileColor: '#03a9f4', projectileSpeed: 500,
-        splash: 0, slow: 0, stun: 2.0, dot: 0, description: 'Stuns vehicles & bosses',
-        unlockHP: 100000, towerHP: 800
+        splash: 0, slow: 0, stun: 1.4, dot: 0, description: 'Stuns vehicles & bosses',
+        unlockHP: 100000, towerHP: 650
     },
     artillery: {
-        name: 'Artillery', cost: 200000, damage: 120, fireRate: 2.5, range: 216,
+        name: 'Artillery', cost: 60000, damage: 110, fireRate: 2.8, range: 216,
         color: '#8d6e63', projectileColor: '#795548', projectileSpeed: 300,
-        splash: 60, slow: 0, stun: 0, dot: 0, description: 'Heavy area damage',
-        unlockHP: 200000, towerHP: 1000
+        splash: 70, slow: 0, stun: 0, dot: 0, description: 'Heavy area damage',
+        unlockHP: 120000, towerHP: 800
     }
 };
 
 // ---- Rank System ----
 const RANKS = [
     { name: 'Private',       hpReq: 0,      dmgMult: 1.0,  rateMult: 1.0, rangeMult: 1.0,  hpMult: 1.0 },
-    { name: 'Corporal',      hpReq: 500,    dmgMult: 1.12, rateMult: 1.0, rangeMult: 1.0,  hpMult: 1.1 },
-    { name: 'Sergeant',      hpReq: 2000,   dmgMult: 1.25, rateMult: 1.0, rangeMult: 1.05, hpMult: 1.2 },
-    { name: 'Lieutenant',    hpReq: 6000,   dmgMult: 1.4,  rateMult: 1.0, rangeMult: 1.05, hpMult: 1.35 },
-    { name: 'Captain',       hpReq: 15000,  dmgMult: 1.55, rateMult: 1.0, rangeMult: 1.1,  hpMult: 1.5 },
-    { name: 'Colonel',       hpReq: 40000,  dmgMult: 1.75, rateMult: 1.0, rangeMult: 1.1,  hpMult: 1.7 },
-    { name: 'General',       hpReq: 100000, dmgMult: 2.0,  rateMult: 1.0, rangeMult: 1.15, hpMult: 2.0 }
+    { name: 'Corporal',      hpReq: 500,    dmgMult: 1.10, rateMult: 1.0, rangeMult: 1.0,  hpMult: 1.08 },
+    { name: 'Sergeant',      hpReq: 2000,   dmgMult: 1.22, rateMult: 1.0, rangeMult: 1.03, hpMult: 1.15 },
+    { name: 'Lieutenant',    hpReq: 6000,   dmgMult: 1.35, rateMult: 1.0, rangeMult: 1.03, hpMult: 1.28 },
+    { name: 'Captain',       hpReq: 15000,  dmgMult: 1.50, rateMult: 1.0, rangeMult: 1.06, hpMult: 1.42 },
+    { name: 'Colonel',       hpReq: 40000,  dmgMult: 1.68, rateMult: 1.0, rangeMult: 1.06, hpMult: 1.58 },
+    { name: 'General',       hpReq: 100000, dmgMult: 1.88, rateMult: 1.0, rangeMult: 1.10, hpMult: 1.75 }
 ];
 
 
@@ -936,17 +936,17 @@ const RANKS = [
 // isArtillery: can blast open new paths
 const ENEMY_DEFS = {
     infantry: { name: 'Infantry', baseHP: 60, speed: 25, baseDmg: 8, rankXP: 1, color: '#a5d6a7', size: 6,
-                canShoot: true, shootRange: 55, shootDamage: 2, shootRate: 2.5 },
+                canShoot: true, shootRange: 55, shootDamage: 2, shootRate: 2.5, reward: 10 },
     jeep:     { name: 'Jeep',     baseHP: 800, speed: 40, baseDmg: 20, rankXP: 3, color: '#fff176', size: 8,
-                canShoot: true, shootRange: 75, shootDamage: 6, shootRate: 1.8 },
-    tank:     { name: 'Tank',     baseHP: 2500, speed: 15, baseDmg: 60, rankXP: 10, color: '#ef9a9a', size: 12,
-                canShoot: true, shootRange: 95, shootDamage: 15, shootRate: 2.8 },
-    enemyArt: { name: 'Enemy Artillery', baseHP: 600, speed: 10, baseDmg: 25, rankXP: 8, color: '#ff6e40', size: 14,
-                canShoot: true, shootRange: 85, shootDamage: 5, shootRate: 4.5, isArtillery: true },
+                canShoot: true, shootRange: 75, shootDamage: 6, shootRate: 1.8, reward: 120 },
+    tank:     { name: 'Tank',     baseHP: 2500, speed: 15, baseDmg: 50, rankXP: 10, color: '#ef9a9a', size: 12,
+                canShoot: true, shootRange: 95, shootDamage: 15, shootRate: 2.8, reward: 380 },
+    enemyArt: { name: 'Enemy Artillery', baseHP: 700, speed: 10, baseDmg: 25, rankXP: 8, color: '#ff6e40', size: 14,
+                canShoot: true, shootRange: 85, shootDamage: 8, shootRate: 4.5, isArtillery: true, reward: 110 },
     runner:   { name: 'Runner', baseHP: 30, speed: 45, baseDmg: 5, rankXP: 1, color: '#81d4fa', size: 5,
-                canShoot: false, shootRange: 0, shootDamage: 0, shootRate: 999 },
+                canShoot: false, shootRange: 0, shootDamage: 0, shootRate: 999, reward: 4 },
     saboteur: { name: 'Saboteur', baseHP: 80, speed: 22, baseDmg: 3, rankXP: 2, color: '#ff8a80', size: 7,
-                canShoot: true, shootRange: 80, shootDamage: 15, shootRate: 2.5, targetsTowersOnly: true }
+                canShoot: true, shootRange: 80, shootDamage: 15, shootRate: 2.5, targetsTowersOnly: true, reward: 11 }
 };
 
 // ---- Fusion Tower Bonuses ----
@@ -963,7 +963,7 @@ const FUSION_BONUSES = {
 // ---- Game State ----
 let gameState = {
     running: false,
-    money: 5000,
+    money: 4000,
     baseHP: BASE_MAX_HP,
     baseMaxHP: BASE_MAX_HP,
     wave: 0,
@@ -3122,7 +3122,7 @@ function spawnEnemy(type, isBoss, waveNum, extraData) {
         slowTimer: 0,
         slowAmount: 0,
         stunTimer: 0,
-        money: Math.ceil(def.baseHP * 0.16),
+        money: def.reward || Math.ceil(def.baseHP * 0.16),
         surrenderChecked: false,
         // Shooting stats
         canShoot: def.canShoot || false,
@@ -5765,7 +5765,7 @@ function startGame() {
     resetHeatMapData();
     gameState = {
         running: true,
-        money: 5000,
+        money: 4000,
         baseHP: BASE_MAX_HP,
         baseMaxHP: BASE_MAX_HP,
         wave: 0,
