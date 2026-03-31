@@ -242,100 +242,257 @@ function playSoundThrottled(type, minInterval = 0.05, volume = 0.15) {
     playSound(type, volume);
 }
 
-// ---- Background Music System (Procedural, Web Audio API) ----
+// ---- Background Music System - Ottoman Mehter March Style ----
 let musicState = {
     playing: false, muted: false, masterGain: null,
-    bassOsc: null, bassGain: null, padOsc1: null, padOsc2: null, padGain: null,
-    percInterval: null, melodyInterval: null, intensityTarget: 0.0, intensity: 0.0, updateInterval: null
+    droneOsc: null, droneGain: null, droneOsc2: null,
+    intervals: [], // all setIntervals stored here
+    intensityTarget: 0.0, intensity: 0.0
 };
-const MUSIC_VOLUME = 0.08;
-const CALM_NOTES = [55, 65.41, 73.42, 82.41, 98];
-const INTENSE_NOTES = [55, 58.27, 65.41, 73.42, 87.31, 98];
+const MUSIC_VOLUME = 0.12;
+
+// Hicaz makam scale (Ottoman/Turkish) - the heroic military scale
+// Root = D: D Eb F# G A Bb C# D (in various octaves)
+const HICAZ_LOW  = [146.83, 155.56, 185.00, 196.00, 220.00, 233.08, 277.18, 293.66]; // D3-D4
+const HICAZ_HIGH = [293.66, 311.13, 369.99, 392.00, 440.00, 466.16, 554.37, 587.33]; // D4-D5
+// Heroic march melody phrases (indices into HICAZ scale, each phrase = sequence of notes)
+const MARCH_PHRASES = [
+    [0, 3, 4, 3, 2, 1, 0],        // D G A G F# Eb D - classic descent
+    [0, 2, 3, 4, 7],               // D F# G A D' - ascending heroic
+    [7, 6, 4, 3, 2, 0],            // D' C# A G F# D - triumphant descent
+    [4, 3, 4, 5, 4, 3, 2, 0],     // A G A Bb A G F# D - ornamental
+    [0, 0, 3, 3, 4, 4, 7],         // D D G G A A D' - march rhythm
+    [7, 7, 4, 4, 3, 2, 1, 0],     // D' D' A A G F# Eb D - battle call
+    [0, 2, 4, 7, 4, 2, 0],        // D F# A D' A F# D - arpeggio
+    [3, 4, 5, 4, 3, 2, 3, 0],     // G A Bb A G F# G D - Turkish ornament
+];
+const BEAT_MS = 300; // ~100 BPM marching tempo
 
 function startMusic() {
     if (!audioCtx || musicState.playing) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    // Master gain
     musicState.masterGain = audioCtx.createGain();
     musicState.masterGain.gain.value = musicState.muted ? 0 : MUSIC_VOLUME;
     musicState.masterGain.connect(audioCtx.destination);
-    // Bass drone
-    musicState.bassOsc = audioCtx.createOscillator(); musicState.bassOsc.type = 'sine'; musicState.bassOsc.frequency.value = 55;
-    musicState.bassGain = audioCtx.createGain(); musicState.bassGain.gain.value = 0.5;
-    const bassFilter = audioCtx.createBiquadFilter(); bassFilter.type = 'lowpass'; bassFilter.frequency.value = 120; bassFilter.Q.value = 1;
-    musicState.bassOsc.connect(bassFilter); bassFilter.connect(musicState.bassGain); musicState.bassGain.connect(musicState.masterGain); musicState.bassOsc.start();
-    // Pad layer
-    musicState.padOsc1 = audioCtx.createOscillator(); musicState.padOsc1.type = 'triangle'; musicState.padOsc1.frequency.value = 110;
-    musicState.padOsc2 = audioCtx.createOscillator(); musicState.padOsc2.type = 'triangle'; musicState.padOsc2.frequency.value = 110.5;
-    musicState.padGain = audioCtx.createGain(); musicState.padGain.gain.value = 0.15;
-    const padFilter = audioCtx.createBiquadFilter(); padFilter.type = 'lowpass'; padFilter.frequency.value = 300; padFilter.Q.value = 0.5;
-    musicState.padOsc1.connect(padFilter); musicState.padOsc2.connect(padFilter); padFilter.connect(musicState.padGain); musicState.padGain.connect(musicState.masterGain);
-    musicState.padOsc1.start(); musicState.padOsc2.start();
-    // Percussion
-    let percBeat = 0;
-    musicState.percInterval = setInterval(() => {
+
+    // === DRONE (Boru/horn-like sustained note on D) ===
+    musicState.droneOsc = audioCtx.createOscillator();
+    musicState.droneOsc.type = 'sawtooth'; musicState.droneOsc.frequency.value = 73.42; // D2
+    musicState.droneGain = audioCtx.createGain(); musicState.droneGain.gain.value = 0.12;
+    const droneFilter = audioCtx.createBiquadFilter();
+    droneFilter.type = 'lowpass'; droneFilter.frequency.value = 200; droneFilter.Q.value = 2;
+    musicState.droneOsc.connect(droneFilter); droneFilter.connect(musicState.droneGain);
+    musicState.droneGain.connect(musicState.masterGain); musicState.droneOsc.start();
+    // Second drone a 5th up (A) for power
+    musicState.droneOsc2 = audioCtx.createOscillator();
+    musicState.droneOsc2.type = 'triangle'; musicState.droneOsc2.frequency.value = 110; // A2
+    const droneGain2 = audioCtx.createGain(); droneGain2.gain.value = 0.06;
+    const droneFilter2 = audioCtx.createBiquadFilter();
+    droneFilter2.type = 'lowpass'; droneFilter2.frequency.value = 250; droneFilter2.Q.value = 1;
+    musicState.droneOsc2.connect(droneFilter2); droneFilter2.connect(droneGain2);
+    droneGain2.connect(musicState.masterGain); musicState.droneOsc2.start();
+
+    // === DAVUL (Large bass drum) - Strong marching beat ===
+    let davulBeat = 0;
+    musicState.intervals.push(setInterval(() => {
         if (!audioCtx || !musicState.playing) return;
-        const now = audioCtx.currentTime; const intensity = musicState.intensity;
-        if (percBeat % 4 === 0 || percBeat % 4 === 2) {
-            const k = audioCtx.createOscillator(), kg = audioCtx.createGain(); k.type = 'sine';
-            k.frequency.setValueAtTime(80 + intensity * 20, now); k.frequency.exponentialRampToValueAtTime(30, now + 0.15);
-            kg.gain.setValueAtTime(0.3 + intensity * 0.3, now); kg.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-            k.connect(kg); kg.connect(musicState.masterGain); k.start(now); k.stop(now + 0.2);
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+        const beat = davulBeat % 8;
+
+        // DAVUL: Strong hit on beats 0, 4 (DUM) - lighter on 2, 6 (TEK)
+        if (beat === 0 || beat === 4) {
+            // Heavy davul DUM
+            const k = audioCtx.createOscillator(), kg = audioCtx.createGain();
+            k.type = 'sine';
+            k.frequency.setValueAtTime(90, now);
+            k.frequency.exponentialRampToValueAtTime(35, now + 0.2);
+            kg.gain.setValueAtTime(0.5 + int * 0.3, now);
+            kg.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            k.connect(kg); kg.connect(musicState.masterGain); k.start(now); k.stop(now + 0.35);
+            // Add noise layer for davul skin slap
+            const dur = 0.06;
+            const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.015));
+            const s = audioCtx.createBufferSource(); s.buffer = buf;
+            const sg = audioCtx.createGain(); sg.gain.setValueAtTime(0.2 + int * 0.15, now);
+            sg.gain.exponentialRampToValueAtTime(0.001, now + dur);
+            const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 400;
+            s.connect(lp); lp.connect(sg); sg.connect(musicState.masterGain); s.start(now);
         }
-        if (percBeat % 4 === 1 || (intensity > 0.5 && percBeat % 4 === 3)) {
-            const dur = 0.08, buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate), d = buf.getChannelData(0);
-            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.02));
-            const s = audioCtx.createBufferSource(); s.buffer = buf; const sg = audioCtx.createGain();
-            sg.gain.setValueAtTime(0.15 + intensity * 0.2, now); sg.gain.exponentialRampToValueAtTime(0.001, now + dur);
-            const sf = audioCtx.createBiquadFilter(); sf.type = 'highpass'; sf.frequency.value = 800;
-            s.connect(sf); sf.connect(sg); sg.connect(musicState.masterGain); s.start(now);
+        if (beat === 2 || beat === 6) {
+            // Lighter TEK (higher pitch, shorter)
+            const k = audioCtx.createOscillator(), kg = audioCtx.createGain();
+            k.type = 'sine';
+            k.frequency.setValueAtTime(120, now);
+            k.frequency.exponentialRampToValueAtTime(60, now + 0.1);
+            kg.gain.setValueAtTime(0.25 + int * 0.15, now);
+            kg.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            k.connect(kg); kg.connect(musicState.masterGain); k.start(now); k.stop(now + 0.15);
         }
-        if (intensity > 0.3) {
-            const dur = 0.03, buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate), d = buf.getChannelData(0);
-            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.005));
-            const s = audioCtx.createBufferSource(); s.buffer = buf; const sg = audioCtx.createGain();
-            sg.gain.setValueAtTime(0.08 * intensity, now); sg.gain.exponentialRampToValueAtTime(0.001, now + dur);
-            const sf = audioCtx.createBiquadFilter(); sf.type = 'highpass'; sf.frequency.value = 5000;
-            s.connect(sf); sf.connect(sg); sg.connect(musicState.masterGain); s.start(now);
+
+        // ZIL (Cymbals) - crash on beat 0 of every bar, tick on others when intense
+        if (beat === 0) {
+            const dur = 0.15;
+            const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.04));
+            const s = audioCtx.createBufferSource(); s.buffer = buf;
+            const sg = audioCtx.createGain(); sg.gain.setValueAtTime(0.12 + int * 0.1, now);
+            sg.gain.exponentialRampToValueAtTime(0.001, now + dur);
+            const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3000;
+            s.connect(hp); hp.connect(sg); sg.connect(musicState.masterGain); s.start(now);
         }
-        percBeat++;
-    }, 400);
-    // Melody
-    musicState.melodyInterval = setInterval(() => {
+        if (int > 0.3 && (beat % 2 === 0)) {
+            // Lighter cymbal ticks
+            const dur = 0.02;
+            const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.004));
+            const s = audioCtx.createBufferSource(); s.buffer = buf;
+            const sg = audioCtx.createGain(); sg.gain.setValueAtTime(0.05 * int, now);
+            const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 6000;
+            s.connect(hp); hp.connect(sg); sg.connect(musicState.masterGain); s.start(now);
+        }
+
+        // NAKKARE (Kettledrum roll on beats before downbeat, intense only)
+        if (int > 0.5 && (beat === 7)) {
+            for (let r = 0; r < 4; r++) {
+                const t = now + r * 0.05;
+                const nk = audioCtx.createOscillator(), nkg = audioCtx.createGain();
+                nk.type = 'sine'; nk.frequency.setValueAtTime(200, t);
+                nk.frequency.exponentialRampToValueAtTime(120, t + 0.04);
+                nkg.gain.setValueAtTime(0.08 + r * 0.03, t);
+                nkg.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+                nk.connect(nkg); nkg.connect(musicState.masterGain); nk.start(t); nk.stop(t + 0.06);
+            }
+        }
+
+        davulBeat++;
+    }, BEAT_MS));
+
+    // === ZURNA MELODY (Heroic Turkish oboe sound) ===
+    let phraseIdx = 0, noteIdx = 0;
+    let currentPhrase = MARCH_PHRASES[0];
+    musicState.intervals.push(setInterval(() => {
         if (!audioCtx || !musicState.playing) return;
-        const now = audioCtx.currentTime, intensity = musicState.intensity;
-        const notes = intensity > 0.5 ? INTENSE_NOTES : CALM_NOTES;
-        const freq = notes[Math.floor(Math.random() * notes.length)] * (intensity > 0.5 ? 4 : 2);
-        const mo = audioCtx.createOscillator(); mo.type = intensity > 0.5 ? 'sawtooth' : 'sine'; mo.frequency.value = freq;
-        const mg = audioCtx.createGain(); const dur = 0.6 + Math.random() * 0.6;
-        mg.gain.setValueAtTime(0.08 + intensity * 0.12, now); mg.gain.setValueAtTime(0.08 + intensity * 0.1, now + dur * 0.3);
-        mg.gain.exponentialRampToValueAtTime(0.001, now + dur);
-        const mf = audioCtx.createBiquadFilter(); mf.type = 'lowpass'; mf.frequency.value = 600 + intensity * 1200; mf.Q.value = 1;
-        mo.connect(mf); mf.connect(mg); mg.connect(musicState.masterGain); mo.start(now); mo.stop(now + dur);
-    }, 1600);
-    // Intensity update
-    musicState.updateInterval = setInterval(() => {
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+
+        // Only play melody when intensity > 0.15 (during/near waves)
+        if (int < 0.15) { noteIdx = 0; return; }
+
+        const scale = int > 0.6 ? HICAZ_HIGH : HICAZ_LOW;
+        const freq = scale[currentPhrase[noteIdx]];
+        const noteDur = BEAT_MS / 1000 * (0.8 + Math.random() * 0.3);
+
+        // Zurna sound: sawtooth + bandpass for nasal quality
+        const zur = audioCtx.createOscillator();
+        zur.type = 'sawtooth'; zur.frequency.value = freq;
+        // Add slight vibrato for authenticity
+        const vibLfo = audioCtx.createOscillator();
+        vibLfo.type = 'sine'; vibLfo.frequency.value = 5 + int * 3; // vibrato speed
+        const vibGain = audioCtx.createGain(); vibGain.gain.value = freq * 0.008; // subtle pitch wobble
+        vibLfo.connect(vibGain); vibGain.connect(zur.frequency); vibLfo.start(now);
+
+        const zurGain = audioCtx.createGain();
+        zurGain.gain.setValueAtTime(0.001, now);
+        zurGain.gain.exponentialRampToValueAtTime(0.12 + int * 0.1, now + 0.02); // sharp attack
+        zurGain.gain.setValueAtTime(0.1 + int * 0.08, now + noteDur * 0.7);
+        zurGain.gain.exponentialRampToValueAtTime(0.001, now + noteDur);
+
+        // Bandpass filter for nasal zurna tone
+        const bp = audioCtx.createBiquadFilter();
+        bp.type = 'bandpass'; bp.frequency.value = freq * 2.5; bp.Q.value = 2;
+        // Second harmonic emphasis
+        const bp2 = audioCtx.createBiquadFilter();
+        bp2.type = 'peaking'; bp2.frequency.value = freq * 3; bp2.gain.value = 6; bp2.Q.value = 3;
+
+        zur.connect(bp); bp.connect(bp2); bp2.connect(zurGain);
+        zurGain.connect(musicState.masterGain);
+        zur.start(now); zur.stop(now + noteDur + 0.05);
+        vibLfo.stop(now + noteDur + 0.05);
+
+        noteIdx++;
+        if (noteIdx >= currentPhrase.length) {
+            noteIdx = 0;
+            // Pick next phrase - mix sequential and random for variety
+            if (int > 0.7) {
+                // Intense: cycle through heroic phrases
+                phraseIdx = (phraseIdx + 1) % MARCH_PHRASES.length;
+            } else {
+                // Calmer: random phrase selection
+                phraseIdx = Math.floor(Math.random() * MARCH_PHRASES.length);
+            }
+            currentPhrase = MARCH_PHRASES[phraseIdx];
+        }
+    }, BEAT_MS));
+
+    // === BORU (Brass horn) - Sustained heroic notes on downbeats ===
+    let boruBeat = 0;
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+        if (int < 0.3) { boruBeat++; return; }
+
+        // Play a sustained brass note every 8 beats
+        if (boruBeat % 8 === 0) {
+            const scale = HICAZ_LOW;
+            const noteChoices = [0, 3, 4, 7]; // D, G, A, D' - strong notes
+            const freq = scale[noteChoices[Math.floor(Math.random() * noteChoices.length)]];
+            const dur = BEAT_MS / 1000 * 4; // sustain for 4 beats
+
+            // Square wave for brass-like tone
+            const br = audioCtx.createOscillator();
+            br.type = 'square'; br.frequency.value = freq;
+            const brGain = audioCtx.createGain();
+            brGain.gain.setValueAtTime(0.001, now);
+            brGain.gain.linearRampToValueAtTime(0.06 + int * 0.04, now + 0.08);
+            brGain.gain.setValueAtTime(0.05 + int * 0.03, now + dur * 0.6);
+            brGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+            const lp = audioCtx.createBiquadFilter();
+            lp.type = 'lowpass'; lp.frequency.value = 800 + int * 400; lp.Q.value = 1;
+            br.connect(lp); lp.connect(brGain); brGain.connect(musicState.masterGain);
+            br.start(now); br.stop(now + dur + 0.05);
+        }
+        boruBeat++;
+    }, BEAT_MS));
+
+    // === Intensity update ===
+    musicState.intervals.push(setInterval(() => {
         if (!musicState.playing) return;
         if (typeof gameState !== 'undefined' && gameState.waveActive) {
-            musicState.intensityTarget = 0.4 + Math.min(gameState.wave / 20, 1.0) * 0.6;
-        } else { musicState.intensityTarget = 0.0; }
-        musicState.intensity += (musicState.intensityTarget - musicState.intensity) * 0.05;
-        if (musicState.bassOsc) musicState.bassOsc.frequency.setTargetAtTime(55 - musicState.intensity * 10, audioCtx.currentTime, 0.5);
-        if (musicState.padGain) musicState.padGain.gain.setTargetAtTime(0.15 + musicState.intensity * 0.2, audioCtx.currentTime, 0.3);
-        if (musicState.bassGain) musicState.bassGain.gain.setTargetAtTime(0.5 + musicState.intensity * 0.3, audioCtx.currentTime, 0.3);
-    }, 200);
+            musicState.intensityTarget = 0.4 + Math.min(gameState.wave / 15, 1.0) * 0.6;
+        } else {
+            musicState.intensityTarget = 0.1; // gentle march between waves
+        }
+        musicState.intensity += (musicState.intensityTarget - musicState.intensity) * 0.03;
+        // Modulate drone volume with intensity
+        if (musicState.droneGain) {
+            musicState.droneGain.gain.setTargetAtTime(0.08 + musicState.intensity * 0.12, audioCtx.currentTime, 0.5);
+        }
+    }, 200));
+
     musicState.playing = true;
 }
 
 function stopMusic() {
     if (!musicState.playing) return;
-    if (musicState.percInterval) { clearInterval(musicState.percInterval); musicState.percInterval = null; }
-    if (musicState.melodyInterval) { clearInterval(musicState.melodyInterval); musicState.melodyInterval = null; }
-    if (musicState.updateInterval) { clearInterval(musicState.updateInterval); musicState.updateInterval = null; }
+    musicState.intervals.forEach(id => clearInterval(id));
+    musicState.intervals = [];
     const now = audioCtx ? audioCtx.currentTime : 0;
     if (musicState.masterGain) musicState.masterGain.gain.setTargetAtTime(0, now, 0.3);
     setTimeout(() => {
-        try { if (musicState.bassOsc) { musicState.bassOsc.stop(); musicState.bassOsc = null; } if (musicState.padOsc1) { musicState.padOsc1.stop(); musicState.padOsc1 = null; } if (musicState.padOsc2) { musicState.padOsc2.stop(); musicState.padOsc2 = null; } } catch(e) {}
-        musicState.bassGain = null; musicState.padGain = null; musicState.masterGain = null; musicState.playing = false; musicState.intensity = 0; musicState.intensityTarget = 0;
+        try {
+            if (musicState.droneOsc) { musicState.droneOsc.stop(); musicState.droneOsc = null; }
+            if (musicState.droneOsc2) { musicState.droneOsc2.stop(); musicState.droneOsc2 = null; }
+        } catch(e) {}
+        musicState.droneGain = null; musicState.masterGain = null;
+        musicState.playing = false; musicState.intensity = 0; musicState.intensityTarget = 0;
     }, 1000);
 }
 
