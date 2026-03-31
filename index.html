@@ -30,6 +30,7 @@
             </div>
             <div id="hud-right">
                 <div id="speed-controls">
+                    <button id="pause-btn" title="Pause (Space)">❚❚</button>
                     <span id="speed-label">SPD</span>
                     <button class="speed-btn active" data-speed="1">1x</button>
                     <button class="speed-btn" data-speed="2">2x</button>
@@ -165,6 +166,15 @@
                 <h1>GAME OVER</h1>
                 <p>You survived to <span id="final-wave">0</span> waves</p>
                 <p>Total kills: <span id="final-kills">0</span></p>
+                <div id="highscore-entry" class="hidden">
+                    <p id="highscore-msg">NEW HIGH SCORE!</p>
+                    <input type="text" id="highscore-name" placeholder="Enter your name" maxlength="12">
+                    <button id="highscore-save-btn">SAVE SCORE</button>
+                </div>
+                <div id="highscore-table">
+                    <h3>TOP 5 RECORDS</h3>
+                    <div id="highscore-list"></div>
+                </div>
                 <button id="restart-btn">PLAY AGAIN</button>
             </div>
         </div>
@@ -238,6 +248,11 @@
                 <button id="start-btn">DEPLOY FORCES</button>
                 <button id="continue-btn" style="display:none;">CONTINUE</button>
                 <button id="delete-save-btn" style="display:none;">DELETE SAVE</button>
+                <button id="start-highscores-btn">HIGH SCORES</button>
+                <div id="start-highscores" class="hidden">
+                    <h3>TOP 5 RECORDS</h3>
+                    <div id="start-highscore-list"></div>
+                </div>
                 <div id="start-hint">Defend your base against endless waves of enemy forces</div>
             </div>
         </div>

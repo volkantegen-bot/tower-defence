@@ -722,6 +722,42 @@ body {
     color: #ccc;
 }
 
+/* High Score Styles */
+#highscore-entry { margin: 16px 0; }
+#highscore-msg { color: #ffd700; font-size: 18px; font-weight: bold; letter-spacing: 2px; margin-bottom: 8px; }
+#highscore-name {
+    padding: 8px 14px; font-size: 16px; border: 2px solid #ffd700; border-radius: 5px;
+    background: rgba(0,0,0,0.5); color: #fff; font-family: inherit; width: 180px;
+    text-align: center; outline: none; margin-right: 8px;
+}
+#highscore-name:focus { border-color: #ffeb3b; box-shadow: 0 0 10px rgba(255,215,0,0.3); }
+#highscore-save-btn {
+    padding: 8px 18px; font-size: 14px; font-weight: bold; cursor: pointer;
+    background: linear-gradient(180deg, #ffd700, #b8960f); border: none; border-radius: 5px;
+    color: #1a1408; letter-spacing: 1px; font-family: inherit;
+}
+#highscore-save-btn:hover { background: linear-gradient(180deg, #ffeb3b, #d4a800); }
+#highscore-table { margin: 16px 0; }
+#highscore-table h3, #start-highscores h3 { color: #c9a84c; font-size: 14px; letter-spacing: 3px; margin-bottom: 8px; }
+.hs-row {
+    display: flex; justify-content: space-between; align-items: center; padding: 6px 12px;
+    background: rgba(255,255,255,0.05); border-radius: 4px; margin-bottom: 3px; font-size: 14px; color: #ccc;
+}
+.hs-row.hs-gold { background: rgba(255,215,0,0.1); color: #ffd700; }
+.hs-rank { width: 30px; font-weight: bold; color: #888; }
+.hs-gold .hs-rank { color: #ffd700; }
+.hs-name { flex: 1; text-align: left; margin-left: 8px; }
+.hs-wave { width: 80px; text-align: right; color: #4caf50; font-weight: bold; }
+.hs-kills { width: 80px; text-align: right; color: #ff9800; }
+.hs-empty { color: #666; font-style: italic; font-size: 13px; }
+#start-highscores-btn {
+    margin-top: 12px; padding: 8px 24px; font-size: 13px; font-weight: bold; cursor: pointer;
+    background: transparent; border: 1px solid #665a42; border-radius: 5px;
+    color: #887a60; letter-spacing: 2px; font-family: inherit; transition: all 0.2s;
+}
+#start-highscores-btn:hover { border-color: #c9a84c; color: #c9a84c; background: rgba(201,168,76,0.1); }
+#start-highscores { margin-top: 12px; max-width: 350px; margin-left: auto; margin-right: auto; }
+
 #restart-btn, #start-btn, #continue-btn {
     margin-top: 24px;
     padding: 14px 40px;
@@ -842,6 +878,13 @@ body {
 
 /* Speed Controls */
 #speed-controls { display: flex; align-items: center; gap: 4px; margin-right: 12px; }
+#pause-btn {
+    background: rgba(30, 30, 50, 0.85); border: 1px solid #555; color: #aaa;
+    font-size: 11px; font-weight: bold; padding: 3px 7px; cursor: pointer;
+    border-radius: 3px; transition: all 0.15s ease; font-family: inherit; margin-right: 4px;
+}
+#pause-btn:hover { border-color: #ff6b6b; color: #ff6b6b; background: rgba(50, 30, 30, 0.9); }
+#pause-btn.active { background: rgba(80, 30, 20, 0.9); border-color: #ff6b6b; color: #ff6b6b; box-shadow: 0 0 6px rgba(255, 107, 107, 0.3); }
 #speed-label { font-size: 10px; font-weight: bold; letter-spacing: 2px; color: #888; margin-right: 4px; }
 .speed-btn {
     background: rgba(30, 30, 50, 0.85); border: 1px solid #555; color: #aaa;

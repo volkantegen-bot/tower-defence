@@ -7,6 +7,8 @@ const ctx = canvas.getContext('2d');
 
 // Game speed multiplier (1x, 2x, 3x)
 let gameSpeedMultiplier = 1;
+let gamePaused = false;
+let previewPauseSpeed = 1; // speed before pause
 
 // ---- Sound System (Web Audio API, procedural) ----
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -4566,6 +4568,32 @@ function updateContinueButton() {
     if (db) db.style.display = hasSaveData() ? 'inline-block' : 'none';
 }
 
+// ---- High Score System ----
+const HIGHSCORE_KEY = 'td_highscores';
+function getHighScores() {
+    try { return JSON.parse(localStorage.getItem(HIGHSCORE_KEY)) || []; } catch(e) { return []; }
+}
+function saveHighScore(name, wave, kills) {
+    const scores = getHighScores();
+    scores.push({ name: name.substring(0, 12) || 'Anonymous', wave, kills, date: Date.now() });
+    scores.sort((a, b) => b.wave - a.wave || b.kills - a.kills);
+    if (scores.length > 5) scores.length = 5;
+    localStorage.setItem(HIGHSCORE_KEY, JSON.stringify(scores));
+    return scores;
+}
+function isHighScore(wave, kills) {
+    const scores = getHighScores();
+    if (scores.length < 5) return true;
+    return wave > scores[scores.length - 1].wave || (wave === scores[scores.length - 1].wave && kills > scores[scores.length - 1].kills);
+}
+function renderHighScores(containerId) {
+    const scores = getHighScores();
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (scores.length === 0) { el.innerHTML = '<div class="hs-empty">No records yet</div>'; return; }
+    el.innerHTML = scores.map((s, i) => `<div class="hs-row${i === 0 ? ' hs-gold' : ''}"><span class="hs-rank">#${i + 1}</span><span class="hs-name">${s.name}</span><span class="hs-wave">Wave ${s.wave}</span><span class="hs-kills">${s.kills} kills</span></div>`).join('');
+}
+
 function gameOver() {
     gameState.running = false;
     stopMusic();
@@ -4574,7 +4602,36 @@ function gameOver() {
     document.getElementById('game-over').classList.remove('hidden');
     document.getElementById('final-wave').textContent = gameState.wave;
     document.getElementById('final-kills').textContent = gameState.totalKills;
+
+    // High score check
+    const entry = document.getElementById('highscore-entry');
+    if (isHighScore(gameState.wave, gameState.totalKills)) {
+        entry.classList.remove('hidden');
+        document.getElementById('highscore-name').value = '';
+        document.getElementById('highscore-name').focus();
+    } else {
+        entry.classList.add('hidden');
+    }
+    renderHighScores('highscore-list');
 }
+
+// High score save button
+document.getElementById('highscore-save-btn').addEventListener('click', () => {
+    const name = document.getElementById('highscore-name').value.trim() || 'Anonymous';
+    saveHighScore(name, gameState.wave, gameState.totalKills);
+    document.getElementById('highscore-entry').classList.add('hidden');
+    renderHighScores('highscore-list');
+});
+document.getElementById('highscore-name').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('highscore-save-btn').click();
+});
+
+// Start screen high scores toggle
+document.getElementById('start-highscores-btn').addEventListener('click', () => {
+    const panel = document.getElementById('start-highscores');
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) renderHighScores('start-highscore-list');
+});
 
 function startGame() {
     setGameSpeed(1);
@@ -5695,11 +5752,28 @@ window.addEventListener('keydown', (e) => {
 
 // ---- Speed Controls ----
 function setGameSpeed(speed) {
+    gamePaused = false;
     gameSpeedMultiplier = speed;
+    previewPauseSpeed = speed;
     document.querySelectorAll('.speed-btn').forEach(btn => btn.classList.toggle('active', parseInt(btn.dataset.speed) === speed));
+    const pauseBtn = document.getElementById('pause-btn');
+    if (pauseBtn) { pauseBtn.classList.remove('active'); pauseBtn.textContent = '❚❚'; }
 }
+function togglePause() {
+    gamePaused = !gamePaused;
+    if (gamePaused) {
+        previewPauseSpeed = gameSpeedMultiplier;
+        gameSpeedMultiplier = 0;
+    } else {
+        gameSpeedMultiplier = previewPauseSpeed;
+    }
+    const pauseBtn = document.getElementById('pause-btn');
+    if (pauseBtn) { pauseBtn.classList.toggle('active', gamePaused); pauseBtn.textContent = gamePaused ? '▶' : '❚❚'; }
+    document.querySelectorAll('.speed-btn').forEach(btn => btn.classList.toggle('active', !gamePaused && parseInt(btn.dataset.speed) === previewPauseSpeed));
+}
+document.getElementById('pause-btn').addEventListener('click', (e) => { e.stopPropagation(); togglePause(); });
 document.querySelectorAll('.speed-btn').forEach(btn => { btn.addEventListener('click', (e) => { e.stopPropagation(); setGameSpeed(parseInt(btn.dataset.speed)); }); });
-window.addEventListener('keydown', (e) => { if (e.key === ',') setGameSpeed(1); if (e.key === '.') setGameSpeed(2); if (e.key === '/') setGameSpeed(3); });
+window.addEventListener('keydown', (e) => { if (e.key === ' ') { e.preventDefault(); togglePause(); } if (e.key === ',') setGameSpeed(1); if (e.key === '.') setGameSpeed(2); if (e.key === '/') setGameSpeed(3); });
 
 // ---- Target Mode Buttons ----
 document.querySelectorAll('.target-btn').forEach(btn => {
