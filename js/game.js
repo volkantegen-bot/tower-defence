@@ -5612,8 +5612,17 @@ function showTutorialStep() {
         arrow.style.top = Math.min(rect.bottom + pad + 2, popTop - 18) + 'px'; arrow.style.bottom = 'auto'; arrow.style.right = 'auto';
     }
 }
-document.getElementById('tutorial-next-btn').addEventListener('click', (e) => { e.stopPropagation(); tutorialStep++; if (tutorialStep >= tutorialSteps.length) endTutorial(); else showTutorialStep(); });
-document.getElementById('tutorial-skip-btn').addEventListener('click', (e) => { e.stopPropagation(); endTutorial(); });
+document.getElementById('tutorial-overlay').addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); });
+document.getElementById('tutorial-overlay').addEventListener('mousedown', (e) => { e.stopPropagation(); });
+document.getElementById('tutorial-overlay').addEventListener('mouseup', (e) => { e.stopPropagation(); });
+document.getElementById('tutorial-next-btn').addEventListener('click', (e) => {
+    e.stopPropagation(); e.preventDefault();
+    if (!tutorialActive) return;
+    tutorialStep++;
+    if (tutorialStep >= tutorialSteps.length) { endTutorial(); }
+    else { showTutorialStep(); }
+});
+document.getElementById('tutorial-skip-btn').addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); endTutorial(); });
 window.addEventListener('resize', () => { if (tutorialActive) showTutorialStep(); });
 
 // ============================================================
