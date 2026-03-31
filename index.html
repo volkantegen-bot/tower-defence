@@ -26,6 +26,7 @@
             </div>
             <div id="hud-center">
                 <div id="wave-counter">WAVE <span id="wave-number">0</span></div>
+                <div id="difficulty-indicator" style="font-size:11px;font-weight:bold;letter-spacing:1px;text-shadow:0 0 4px rgba(0,0,0,0.8);color:#ffffff;">NORMAL</div>
                 <div id="cp-display">CP: <span id="cp-amount">0</span></div>
             </div>
             <div id="hud-right">
@@ -174,6 +175,10 @@
                 <div id="highscore-table">
                     <h3>TOP 5 RECORDS</h3>
                     <div id="highscore-list"></div>
+                </div>
+                <div id="heatmap-section">
+                    <canvas id="heatmap-canvas" width="512" height="320"></canvas>
+                    <div id="postgame-stats"></div>
                 </div>
                 <button id="restart-btn">PLAY AGAIN</button>
             </div>

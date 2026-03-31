@@ -826,6 +826,212 @@ let gameState = {
     deadTowers: [] // fallen soldiers memorial
 };
 
+// ---- Heat Map Data (Post-Game Analytics) ----
+let heatMapData = {
+    killGrid: {},
+    towerKills: {},
+    towerDamageDealt: {},
+    waveSurvival: [],
+    moneySpent: 0,
+    peakMoney: 0,
+    totalEnemiesKilled: 0,
+    totalDamageDealt: 0,
+    baseHPAtWaveStart: BASE_MAX_HP,
+};
+
+function resetHeatMapData() {
+    heatMapData = {
+        killGrid: {},
+        towerKills: {},
+        towerDamageDealt: {},
+        waveSurvival: [],
+        moneySpent: 0,
+        peakMoney: 0,
+        totalEnemiesKilled: 0,
+        totalDamageDealt: 0,
+        baseHPAtWaveStart: BASE_MAX_HP,
+    };
+}
+
+// ============ ADAPTIVE DIFFICULTY AI ============
+const adaptiveDifficulty = {
+    performanceScore: 50,       // 0-100, 50 = balanced, high = player dominating
+    difficultyMultiplier: 1.0,  // applied to enemy HP/count
+    moneyMultiplier: 1.0,       // applied to kill rewards
+    speedMultiplier: 1.0,       // applied to enemy speed
+    streakWins: 0,              // consecutive waves with no base damage
+    streakLosses: 0,            // consecutive waves with significant base damage
+    totalBaseHPLost: 0,
+    waveStartBaseHP: 0,
+    waveStartMoney: 0,
+    waveStartTowerCount: 0,
+    waveClearTimes: [],         // how fast each wave was cleared (seconds)
+    currentWaveStartTime: 0,
+    adjustmentHistory: [],      // log of adjustments made
+    waveEnemiesSpawned: 0,      // enemies spawned this wave
+    waveEnemiesKilled: 0,       // enemies killed this wave (by towers)
+};
+
+function resetAdaptiveDifficulty() {
+    adaptiveDifficulty.performanceScore = 50;
+    adaptiveDifficulty.difficultyMultiplier = 1.0;
+    adaptiveDifficulty.moneyMultiplier = 1.0;
+    adaptiveDifficulty.speedMultiplier = 1.0;
+    adaptiveDifficulty.streakWins = 0;
+    adaptiveDifficulty.streakLosses = 0;
+    adaptiveDifficulty.totalBaseHPLost = 0;
+    adaptiveDifficulty.waveStartBaseHP = 0;
+    adaptiveDifficulty.waveStartMoney = 0;
+    adaptiveDifficulty.waveStartTowerCount = 0;
+    adaptiveDifficulty.waveClearTimes = [];
+    adaptiveDifficulty.currentWaveStartTime = 0;
+    adaptiveDifficulty.adjustmentHistory = [];
+    adaptiveDifficulty.waveEnemiesSpawned = 0;
+    adaptiveDifficulty.waveEnemiesKilled = 0;
+}
+
+function adaptiveAnalyzeWave() {
+    const ad = adaptiveDifficulty;
+    const gs = gameState;
+    let score = ad.performanceScore;
+
+    // Base HP analysis
+    const hpPct = gs.baseHP / gs.baseMaxHP;
+    if (hpPct >= 1.0) {
+        score += 5; // Perfect wave - no damage
+    } else if (hpPct > 0.8) {
+        score += 2;
+    } else if (hpPct < 0.25) {
+        score -= 10;
+    } else if (hpPct < 0.5) {
+        score -= 5;
+    }
+
+    // Track base HP lost this wave
+    const hpLostThisWave = ad.waveStartBaseHP - gs.baseHP;
+    ad.totalBaseHPLost += hpLostThisWave;
+
+    // Money surplus analysis
+    if (gs.money > gs.wave * 2000) {
+        score += 3; // Player hoarding = too easy
+    }
+
+    // Wave clear time analysis
+    const clearTime = (performance.now() - ad.currentWaveStartTime) / 1000;
+    ad.waveClearTimes.push(clearTime);
+    if (clearTime < 15) {
+        score += 3; // Cleared too fast
+    } else if (clearTime > 45) {
+        score -= 2; // Took a long time
+    }
+
+    // Tower count vs wave number
+    if (gs.towers.length > gs.wave * 1.5) {
+        score += 2; // Lots of towers relative to wave
+    }
+
+    // Towers lost this wave
+    const towersLost = ad.waveStartTowerCount - gs.towers.length;
+    if (towersLost > 0) {
+        score -= 3 * towersLost;
+    }
+
+    // Kill efficiency
+    if (ad.waveEnemiesSpawned > 0) {
+        const killPct = ad.waveEnemiesKilled / ad.waveEnemiesSpawned;
+        if (killPct < 0.5) score -= 3; // Many enemies reached base
+    }
+
+    // Streak tracking
+    if (hpLostThisWave <= 0) {
+        ad.streakWins++;
+        ad.streakLosses = 0;
+    } else if (hpLostThisWave > gs.baseMaxHP * 0.15) {
+        ad.streakLosses++;
+        ad.streakWins = 0;
+    } else {
+        // Minor damage - reset both
+        ad.streakWins = 0;
+        ad.streakLosses = 0;
+    }
+
+    if (ad.streakWins >= 3) score += 5;
+    if (ad.streakLosses >= 3) score -= 5;
+
+    // Clamp score to 0-100
+    ad.performanceScore = Math.max(0, Math.min(100, score));
+
+    // Reset per-wave counters
+    ad.waveEnemiesSpawned = 0;
+    ad.waveEnemiesKilled = 0;
+}
+
+function adaptiveAdjustDifficulty() {
+    const ad = adaptiveDifficulty;
+    const score = ad.performanceScore;
+
+    if (score > 70) {
+        // Player dominating - increase challenge
+        ad.difficultyMultiplier = 1.0 + (score - 50) * 0.015;  // up to 1.75x
+        ad.moneyMultiplier = 1.0 - (score - 70) * 0.01;        // down to 0.7x
+        ad.speedMultiplier = 1.0 + (score - 70) * 0.005;       // up to 1.15x
+    } else if (score < 30) {
+        // Player struggling - ease up
+        ad.difficultyMultiplier = 1.0 - (30 - score) * 0.015;  // down to 0.55x
+        ad.moneyMultiplier = 1.0 + (30 - score) * 0.015;       // up to 1.45x
+        ad.speedMultiplier = 1.0 - (30 - score) * 0.005;       // down to 0.85x
+    } else {
+        // Balanced - slowly trend toward 1.0
+        ad.difficultyMultiplier += (1.0 - ad.difficultyMultiplier) * 0.1;
+        ad.moneyMultiplier += (1.0 - ad.moneyMultiplier) * 0.1;
+        ad.speedMultiplier += (1.0 - ad.speedMultiplier) * 0.1;
+    }
+
+    // Clamp multipliers to safe ranges
+    ad.difficultyMultiplier = Math.max(0.55, Math.min(1.75, ad.difficultyMultiplier));
+    ad.moneyMultiplier = Math.max(0.7, Math.min(1.45, ad.moneyMultiplier));
+    ad.speedMultiplier = Math.max(0.85, Math.min(1.15, ad.speedMultiplier));
+
+    // Log adjustment
+    ad.adjustmentHistory.push({
+        wave: gameState.wave,
+        score: score,
+        diff: ad.difficultyMultiplier,
+        money: ad.moneyMultiplier,
+        speed: ad.speedMultiplier
+    });
+    // Keep only last 20 entries
+    if (ad.adjustmentHistory.length > 20) ad.adjustmentHistory.shift();
+}
+
+function getAdaptiveDifficultyLabel() {
+    const mult = adaptiveDifficulty.difficultyMultiplier;
+    if (mult < 0.85) return { text: 'EASY', color: '#4caf50' };
+    if (mult <= 1.15) return { text: 'NORMAL', color: '#ffffff' };
+    if (mult <= 1.35) return { text: 'HARD', color: '#ffeb3b' };
+    return { text: 'EXTREME', color: '#f44336' };
+}
+
+function updateDifficultyIndicator() {
+    const el = document.getElementById('difficulty-indicator');
+    if (!el) return;
+    const label = getAdaptiveDifficultyLabel();
+    el.textContent = label.text;
+    el.style.color = label.color;
+}
+// ============ END ADAPTIVE DIFFICULTY AI ============
+
+// Convert world (iso screen) coords back to grid coords
+function worldToGrid(wx, wy) {
+    const originX = canvas.width / 2;
+    const originY = 80;
+    const mx = wx - originX;
+    const my = wy - originY;
+    const col = (mx / (TILE_W / 2) + my / (TILE_H / 2)) / 2;
+    const row = (my / (TILE_H / 2) - mx / (TILE_W / 2)) / 2;
+    return { col: Math.round(col), row: Math.round(row) };
+}
+
 function initGrid() {
     gameState.grid = [];
     for (let c = 0; c < GRID_COLS; c++) {
@@ -1855,12 +2061,37 @@ function drawEnemies() {
         const size = enemy.size;
         const isBoss = enemy.isBoss;
         const ex = enemy.x;
-        const ey = enemy.y;
+        // Apply staging bob offset for idle animation at spawn
+        const ey = enemy.y + (enemy.staging ? (enemy.stagingBob || 0) : 0);
+
+        // === STAGING GLOW EFFECT ===
+        // Draw a subtle pulsing glow around enemies staging at spawn
+        if (enemy.staging) {
+            const glowTime = (enemy.stagingTimer || 0) * 2;
+            const glowAlpha = 0.12 + Math.sin(glowTime) * 0.06;
+            const glowRadius = size * 2.5 + Math.sin(glowTime * 0.7) * 3;
+            ctx.beginPath();
+            ctx.arc(ex, ey, glowRadius, 0, Math.PI * 2);
+            const stagingGrad = ctx.createRadialGradient(ex, ey, size * 0.5, ex, ey, glowRadius);
+            stagingGrad.addColorStop(0, `rgba(255,100,50,${glowAlpha})`);
+            stagingGrad.addColorStop(0.6, `rgba(255,60,20,${glowAlpha * 0.5})`);
+            stagingGrad.addColorStop(1, 'rgba(255,30,0,0)');
+            ctx.fillStyle = stagingGrad;
+            ctx.fill();
+        }
 
         // Get movement direction for facing
         const ePath = enemy.path || pathWaypoints;
         let facingX = 1, facingY = 0;
-        if (enemy.waypointIdx < ePath.length - 1) {
+        if (enemy.staging) {
+            // Staging enemies face toward the path (next waypoint direction)
+            if (ePath.length > 1) {
+                const nxt = ePath[1];
+                const fd = Math.hypot(nxt.x - ex, nxt.y - ey) || 1;
+                facingX = (nxt.x - ex) / fd;
+                facingY = (nxt.y - ey) / fd;
+            }
+        } else if (enemy.waypointIdx < ePath.length - 1) {
             const nxt = ePath[enemy.waypointIdx + 1];
             const fd = Math.hypot(nxt.x - ex, nxt.y - ey) || 1;
             facingX = (nxt.x - ex) / fd;
@@ -2676,25 +2907,41 @@ function getCombinedTitle(tower) {
 // ENEMY LOGIC
 // ============================================================
 
-function spawnEnemy(type, isBoss, waveNum) {
+function spawnEnemy(type, isBoss, waveNum, extraData) {
     const def = ENEMY_DEFS[type];
     const enemyPath = getEnemyPath();
     const start = enemyPath[0];
     const hpScale = 1 + waveNum * 0.04;
     const bossScale = isBoss ? 6 : 1;
 
+    // Scout adjustments: faster but weaker
+    const isScout = (extraData && extraData.isScout) || false;
+    const scoutHPMult = isScout ? 0.5 : 1;
+    const scoutSpeedMult = isScout ? 1.4 : 1;
+
+    // Formation data from commander
+    const formation = (extraData && extraData.formation) || null;
+    const commanderTactic = (extraData && extraData.commanderTactic) || 'standard';
+
+    // Adaptive difficulty multipliers
+    const adaptiveHPMult = adaptiveDifficulty.difficultyMultiplier;
+    const adaptiveSpeedMult = adaptiveDifficulty.speedMultiplier;
+
+    // Track spawned enemies for adaptive analysis
+    adaptiveDifficulty.waveEnemiesSpawned++;
+
     gameState.enemies.push({
         type,
         x: start.x,
         y: start.y,
-        hp: def.baseHP * hpScale * bossScale,
-        maxHP: def.baseHP * hpScale * bossScale,
-        speed: def.speed * (isBoss ? 0.8 : 1),
+        hp: def.baseHP * hpScale * bossScale * scoutHPMult * adaptiveHPMult,
+        maxHP: def.baseHP * hpScale * bossScale * scoutHPMult * adaptiveHPMult,
+        speed: def.speed * (isBoss ? 0.8 : 1) * scoutSpeedMult * adaptiveSpeedMult,
         baseDmg: def.baseDmg * (isBoss ? 2 : 1),
-        color: def.color,
-        size: def.size * (isBoss ? 1.8 : 1),
+        color: isScout ? '#e0e0e0' : def.color,
+        size: def.size * (isBoss ? 1.8 : 1) * (isScout ? 0.8 : 1),
         isBoss,
-        path: enemyPath, // each enemy has its own path (old or shortcut)
+        path: enemyPath,
         waypointIdx: 0,
         dead: false,
         dotTimer: 0,
@@ -2710,11 +2957,22 @@ function spawnEnemy(type, isBoss, waveNum) {
         shootRange: def.shootRange || 0,
         shootDamage: (def.shootDamage || 0) * (1 + (waveNum - 1) * 0.03),
         shootRate: def.shootRate || 999,
-        shootCooldown: Math.random() * 2, // stagger initial shots
+        shootCooldown: Math.random() * 2,
         shootFlash: 0,
         isArtillery: def.isArtillery || false,
-        artilleryCooldown: 3 + Math.random() * 4, // first blast 3-7s
-        hasBlasted: false
+        artilleryCooldown: 3 + Math.random() * 4,
+        hasBlasted: false,
+        // Commander AI properties
+        isScout: isScout,
+        formation: formation,
+        commanderTactic: commanderTactic,
+        shieldDR: 0,         // damage reduction from tank_shield formation (0-0.3)
+        speedBurstTimer: 0,  // speed_burst zone timer
+        // Staging at spawn properties
+        staging: (extraData && extraData.staging) || false,
+        stagingTimer: 0,
+        stagingBob: 0,
+        groupId: (extraData && extraData.groupId != null) ? extraData.groupId : -1
     });
 }
 
@@ -2722,10 +2980,68 @@ function updateEnemies(dt) {
     for (const enemy of gameState.enemies) {
         if (enemy.dead) continue;
 
+        // === STAGING AT SPAWN ===
+        // Enemies wait at spawn area until their group is ready to advance
+        if (enemy.staging) {
+            enemy.stagingTimer += dt;
+            // Idle bobbing animation
+            enemy.stagingBob = Math.sin(enemy.stagingTimer * 3 + (enemy.groupId || 0) * 0.5) * 2;
+
+            // Determine staging duration based on commander tactic
+            let maxStagingTime = 2.5; // default staging time in seconds
+            if (enemy.commanderTactic === 'rush') {
+                maxStagingTime = 1.0; // rush = quick staging
+            } else if (enemy.commanderTactic === 'armor' || enemy.commanderTactic === 'siege') {
+                maxStagingTime = 3.0; // armor/siege = longer staging
+            } else if (enemy.commanderTactic === 'overwhelm') {
+                maxStagingTime = 2.0; // overwhelm = moderate staging, all together
+            }
+
+            // Check if this enemy's group should advance
+            const groupEnemies = gameState.enemies.filter(e => !e.dead && e.groupId === enemy.groupId);
+            // Count how many from this group's queue are still waiting to spawn
+            const groupStillSpawning = gameState.enemiesToSpawn.filter(e => e.groupId === enemy.groupId).length;
+            const allGroupSpawned = groupStillSpawning === 0;
+
+            // Group advances when: all members spawned, OR staging timer exceeded
+            if ((allGroupSpawned && groupEnemies.length > 0) || enemy.stagingTimer > maxStagingTime) {
+                // Release entire group at once
+                for (const ge of groupEnemies) {
+                    ge.staging = false;
+                    ge.stagingBob = 0;
+                }
+            }
+            continue; // Don't move along path while staging
+        }
+
         // Stun
         if (enemy.stunTimer > 0) {
             enemy.stunTimer -= dt;
             continue; // skip movement while stunned
+        }
+
+        // === COMMANDER FORMATION: tank_shield ===
+        // Enemies near a tank get 30% damage reduction
+        if (enemy.formation === 'tank_shield' && enemy.type !== 'tank') {
+            let nearTank = false;
+            for (const other of gameState.enemies) {
+                if (other.dead || other === enemy || other.type !== 'tank') continue;
+                const d = Math.hypot(enemy.x - other.x, enemy.y - other.y);
+                if (d < 60) { nearTank = true; break; }
+            }
+            enemy.shieldDR = nearTank ? 0.3 : 0;
+        }
+
+        // === COMMANDER FORMATION: speed_burst ===
+        // Accelerate through kill zones (high tower coverage areas)
+        if (enemy.formation === 'speed_burst') {
+            let inKillZone = false;
+            for (const tower of gameState.towers) {
+                const tp = gridCenter(tower.col, tower.row);
+                const d = isoDist(tp.x, tp.y, enemy.x, enemy.y);
+                if (d < getEffectiveRange(tower) * 0.7) { inKillZone = true; break; }
+            }
+            enemy.speedBurstTimer = inKillZone ? 1 : Math.max(0, (enemy.speedBurstTimer || 0) - dt);
         }
 
         // DOT
@@ -2758,6 +3074,24 @@ function updateEnemies(dt) {
         if (enemy.slowTimer > 0) {
             enemy.slowTimer -= dt;
             speedMult = 1 - enemy.slowAmount;
+        }
+
+        // Commander speed burst: 40% faster in kill zones
+        if (enemy.speedBurstTimer > 0) {
+            speedMult *= 1.4;
+        }
+
+        // Commander spread formation: maintain spacing
+        if (enemy.formation === 'spread') {
+            for (const other of gameState.enemies) {
+                if (other.dead || other === enemy) continue;
+                const d = Math.hypot(enemy.x - other.x, enemy.y - other.y);
+                if (d < 25 && d > 0) {
+                    // Slow down slightly if too close to spread out
+                    speedMult *= 0.7;
+                    break;
+                }
+            }
         }
 
         // Movement along path (each enemy follows its own path)
@@ -2803,7 +3137,7 @@ function updateEnemies(dt) {
 // === ENEMY SHOOTING AT TOWERS ===
 function updateEnemyShooting(dt) {
     for (const enemy of gameState.enemies) {
-        if (enemy.dead || !enemy.canShoot || enemy.stunTimer > 0) continue;
+        if (enemy.dead || !enemy.canShoot || enemy.stunTimer > 0 || enemy.staging) continue;
 
         // Decay shoot flash
         if (enemy.shootFlash > 0) enemy.shootFlash -= dt * 3;
@@ -3050,7 +3384,7 @@ let blastsThisWave = 0; // max 1 blast per wave
 
 function updateEnemyArtillery(dt) {
     for (const enemy of gameState.enemies) {
-        if (enemy.dead || !enemy.isArtillery || enemy.stunTimer > 0) continue;
+        if (enemy.dead || !enemy.isArtillery || enemy.stunTimer > 0 || enemy.staging) continue;
 
         // Max 1 tile blasted per wave
         if (blastsThisWave >= 1) continue;
@@ -3293,9 +3627,12 @@ function updateAllies(dt) {
 
 function killEnemy(enemy, sourceTower) {
     enemy.dead = true;
-    gameState.money += enemy.money;
+    // Adaptive difficulty: apply money multiplier to kill reward
+    gameState.money += Math.ceil(enemy.money * adaptiveDifficulty.moneyMultiplier);
     gameState.totalKills++;
     gameState.totalHPDestroyed += enemy.maxHP;
+    // Adaptive difficulty: track kills this wave
+    adaptiveDifficulty.waveEnemiesKilled++;
 
     // Award Command Points (1 per kill, 3 for bosses)
     gameState.commandPoints += enemy.isBoss ? 3 : 1;
@@ -3303,6 +3640,40 @@ function killEnemy(enemy, sourceTower) {
 
     if (sourceTower) {
         sourceTower.kills++;
+    }
+
+    // --- Commander AI: track kills and scout intel ---
+    commanderAI.lastWaveEnemiesKilled++;
+    if (enemy.isScout && sourceTower) {
+        commanderAI.scoutData.push({
+            towerType: sourceTower.type,
+            towerCol: sourceTower.col,
+            towerRow: sourceTower.row,
+            wave: gameState.wave
+        });
+    }
+
+    // ---- Heat Map Tracking ----
+    // Record enemy death position on grid
+    const gridPos = worldToGrid(enemy.x, enemy.y);
+    const killKey = `${gridPos.col},${gridPos.row}`;
+    heatMapData.killGrid[killKey] = (heatMapData.killGrid[killKey] || 0) + 1;
+    heatMapData.totalEnemiesKilled++;
+    heatMapData.totalDamageDealt += enemy.maxHP;
+
+    // Track tower performance
+    if (sourceTower) {
+        const tKey = `${sourceTower.col},${sourceTower.row}`;
+        if (!heatMapData.towerKills[tKey]) {
+            heatMapData.towerKills[tKey] = { type: sourceTower.type, kills: 0, totalDamage: 0, name: sourceTower.soldierName || TOWER_DEFS[sourceTower.type].name };
+        }
+        heatMapData.towerKills[tKey].kills++;
+        heatMapData.towerKills[tKey].totalDamage += enemy.maxHP;
+    }
+
+    // Track peak money
+    if (gameState.money > heatMapData.peakMoney) {
+        heatMapData.peakMoney = gameState.money;
     }
 
     // Death particles
@@ -3323,6 +3694,8 @@ function damageBase(enemy) {
     const dmg = enemy.baseDmg * (enemy.hp / enemy.maxHP);
     gameState.baseHP = Math.max(0, gameState.baseHP - dmg);
     updateHPBar();
+    // Commander AI: track base damage for wave evaluation
+    commanderAI.lastWaveBaseDamage += dmg;
 
     // Impact particles
     const basePt = PATH_CELLS[PATH_CELLS.length - 1];
@@ -3651,7 +4024,7 @@ function updateFusionAbilities(dt) {
                     if (enemy.dead) continue;
                     const dist = isoDist(enemy.x, enemy.y, p.x, p.y);
                     if (dist <= range * 0.8) {
-                        const dmg = getEffectiveDamage(tower) * 0.5 * dt;
+                        const dmg = getEffectiveDamage(tower) * 0.5 * dt * (1 - (enemy.shieldDR || 0));
                         enemy.hp -= dmg;
                         tower.hpDestroyed += dmg;
                         if (enemy.hp <= 0) killEnemy(enemy, tower);
@@ -3685,6 +4058,7 @@ function placeTower(col, row, type) {
     if (gameState.grid[col][row] !== 0) return false;
 
     gameState.money -= def.cost;
+    heatMapData.moneySpent += def.cost;
     gameState.grid[col][row] = 2;
 
     const tower = {
@@ -3850,7 +4224,7 @@ function updateTowers(dt) {
                         let angleDiff = Math.abs(enemyAngle - angle);
                         if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
                         if (angleDiff < 0.5) {
-                            const dmg = getEffectiveDamage(tower);
+                            const dmg = getEffectiveDamage(tower) * (1 - (enemy.shieldDR || 0));
                             enemy.hp -= dmg;
                             tower.hpDestroyed += dmg;
                             enemy.dotTimer = 2;
@@ -3910,7 +4284,7 @@ function updateProjectiles(dt) {
                         const sDist = isoDist(e.x, e.y, proj.x, proj.y);
                         if (sDist <= proj.splash) {
                             const falloff = 1 - (sDist / proj.splash) * 0.5;
-                            const dmg = proj.damage * falloff;
+                            const dmg = proj.damage * falloff * (1 - (e.shieldDR || 0));
                             e.hp -= dmg;
                             proj.tower.hpDestroyed += dmg;
                             if (e.hp <= 0) killEnemy(e, proj.tower);
@@ -3926,7 +4300,7 @@ function updateProjectiles(dt) {
                         });
                     }
                 } else {
-                    const dmg = proj.damage;
+                    const dmg = proj.damage * (1 - (enemy.shieldDR || 0));
                     enemy.hp -= dmg;
                     proj.tower.hpDestroyed += dmg;
 
@@ -4020,33 +4394,425 @@ function updateWavePreview() {
     totalEl.textContent = preview.totalCount + ' enemies' + (preview.isBossWave ? ' + BOSS' : '');
 }
 
+// ============================================================
+// ENEMY COMMANDER AI
+// ============================================================
+
+const commanderAI = {
+    scoutData: [],          // info gathered from scout waves
+    playerStrength: 0,      // estimated player defense power
+    lastWaveResult: null,   // how well last wave performed
+    tacticsUsed: [],        // avoid repeating same tactic
+    weakPoints: [],         // grid positions with low tower coverage
+    counterStrategy: null,  // current counter to player's build
+    aggressionLevel: 0.5,   // 0-1, increases as game progresses
+    currentTactic: 'standard',
+    lastWaveEnemiesKilled: 0,
+    lastWaveEnemiesTotal: 0,
+    lastWaveBaseDamage: 0,
+    pendingNotification: null,
+    formationType: null,    // current formation for the wave
+    scoutWaveActive: false, // whether current wave has scouts
+};
+
+function commanderReset() {
+    commanderAI.scoutData = [];
+    commanderAI.playerStrength = 0;
+    commanderAI.lastWaveResult = null;
+    commanderAI.tacticsUsed = [];
+    commanderAI.weakPoints = [];
+    commanderAI.counterStrategy = null;
+    commanderAI.aggressionLevel = 0.5;
+    commanderAI.currentTactic = 'standard';
+    commanderAI.lastWaveEnemiesKilled = 0;
+    commanderAI.lastWaveEnemiesTotal = 0;
+    commanderAI.lastWaveBaseDamage = 0;
+    commanderAI.pendingNotification = null;
+    commanderAI.formationType = null;
+    commanderAI.scoutWaveActive = false;
+}
+
+// Notification system for commander messages
+let commanderNotifications = [];
+
+function showCommanderNotification(message) {
+    const notif = {
+        text: message,
+        timer: 3.5,
+        opacity: 1
+    };
+    commanderNotifications.push(notif);
+}
+
+function updateCommanderNotifications(dt) {
+    for (const notif of commanderNotifications) {
+        notif.timer -= dt;
+        if (notif.timer < 0.5) {
+            notif.opacity = Math.max(0, notif.timer / 0.5);
+        }
+    }
+    commanderNotifications = commanderNotifications.filter(n => n.timer > 0);
+}
+
+function drawCommanderNotifications() {
+    if (commanderNotifications.length === 0) return;
+    ctx.save();
+    // Draw in screen space (outside zoom/pan transform)
+    const startY = 80;
+    for (let i = 0; i < commanderNotifications.length; i++) {
+        const notif = commanderNotifications[i];
+        const y = startY + i * 36;
+        const alpha = notif.opacity;
+
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.fillStyle = '#1a0000';
+        const textWidth = ctx.measureText(notif.text).width || 300;
+        const boxW = Math.max(320, textWidth + 40);
+        const boxX = (canvas.width - boxW) / 2;
+        ctx.fillRect(boxX, y, boxW, 30);
+
+        // Red border
+        ctx.strokeStyle = '#ff2222';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(boxX, y, boxW, 30);
+
+        // Text
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#ff4444';
+        ctx.font = 'bold 13px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(notif.text, canvas.width / 2, y + 15);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+}
+
+// Analyze the player's tower defenses
+function commanderAnalyzeDefenses() {
+    const towers = gameState.towers;
+    if (towers.length === 0) {
+        commanderAI.playerStrength = 0;
+        commanderAI.weakPoints = [];
+        commanderAI.counterStrategy = null;
+        return;
+    }
+
+    // Tower type distribution
+    const typeCounts = {};
+    let totalDPS = 0;
+    for (const tower of towers) {
+        const type = tower.type;
+        typeCounts[type] = (typeCounts[type] || 0) + 1;
+        const def = TOWER_DEFS[type];
+        if (def.damage > 0 && def.fireRate > 0) {
+            const dmg = getEffectiveDamage(tower);
+            const rate = getEffectiveFireRate(tower);
+            totalDPS += dmg / rate;
+        }
+    }
+
+    commanderAI.playerStrength = totalDPS;
+
+    // Find the dominant tower type (most common)
+    let dominantType = null;
+    let maxCount = 0;
+    for (const [type, count] of Object.entries(typeCounts)) {
+        if (count > maxCount) {
+            maxCount = count;
+            dominantType = type;
+        }
+    }
+
+    // Counter-strategy based on dominant tower type
+    if (dominantType && maxCount >= 2) {
+        switch (dominantType) {
+            case 'machinegun':
+                commanderAI.counterStrategy = 'armor'; // send tanks (high HP)
+                break;
+            case 'sniper':
+                commanderAI.counterStrategy = 'rush'; // send runners (fast, hard to snipe)
+                break;
+            case 'flamethrower':
+                commanderAI.counterStrategy = 'siege'; // outrange with artillery enemies
+                break;
+            case 'emp':
+                commanderAI.counterStrategy = 'overwhelm'; // swarm (too many to stun)
+                break;
+            case 'missile':
+            case 'artillery':
+                commanderAI.counterStrategy = 'spread'; // spread out to reduce splash
+                break;
+            case 'slowdown':
+                commanderAI.counterStrategy = 'armor'; // slow doesn't matter much for tanks
+                break;
+            default:
+                commanderAI.counterStrategy = null;
+        }
+    } else {
+        commanderAI.counterStrategy = null;
+    }
+
+    // Identify weak points: path tiles NOT well covered by towers
+    const weakPoints = [];
+    for (let i = 0; i < PATH_CELLS.length; i++) {
+        const cell = PATH_CELLS[i];
+        const cellCenter = gridCenter(cell.c, cell.r);
+        let coverageScore = 0;
+        for (const tower of towers) {
+            const tp = gridCenter(tower.col, tower.row);
+            const dist = isoDist(tp.x, tp.y, cellCenter.x, cellCenter.y);
+            const range = getEffectiveRange(tower);
+            if (dist <= range) {
+                const def = TOWER_DEFS[tower.type];
+                if (def.damage > 0) {
+                    coverageScore += getEffectiveDamage(tower) / getEffectiveFireRate(tower);
+                }
+            }
+        }
+        if (coverageScore < totalDPS * 0.15) {
+            weakPoints.push({ pathIdx: i, col: cell.c, row: cell.r, coverage: coverageScore });
+        }
+    }
+    commanderAI.weakPoints = weakPoints;
+
+    // Track scout data from last wave's kills
+    if (commanderAI.scoutData.length > 10) {
+        commanderAI.scoutData = commanderAI.scoutData.slice(-10);
+    }
+}
+
+// Choose tactic for the wave based on analysis
+function commanderChooseTactic(waveNum) {
+    // Early waves: mostly standard, let the player set up
+    if (waveNum <= 3) {
+        commanderAI.currentTactic = 'standard';
+        commanderAI.formationType = null;
+        return 'standard';
+    }
+
+    // Waves 4-5: light scouting
+    if (waveNum <= 5) {
+        commanderAI.scoutWaveActive = true;
+        commanderAI.currentTactic = 'standard';
+        commanderAI.formationType = null;
+        showCommanderNotification('\u26a0\ufe0f ENEMY COMMANDER: Sending scouts...');
+        return 'standard';
+    }
+
+    // Update aggression level based on wave number and last wave results
+    commanderAI.aggressionLevel = Math.min(1.0, 0.3 + waveNum * 0.03);
+
+    // If last wave did poorly (few enemies reached base), increase aggression
+    if (commanderAI.lastWaveResult === 'crushed') {
+        commanderAI.aggressionLevel = Math.min(1.0, commanderAI.aggressionLevel + 0.15);
+    }
+
+    // Build list of available tactics
+    const availableTactics = ['standard', 'rush', 'armor', 'overwhelm'];
+    if (waveNum >= 8) availableTactics.push('siege', 'flank');
+    if (waveNum >= 10) availableTactics.push('counter');
+
+    // Prefer counter-strategy if we have one
+    let chosenTactic = 'standard';
+
+    if (commanderAI.counterStrategy && waveNum >= 10 && Math.random() < commanderAI.aggressionLevel) {
+        chosenTactic = commanderAI.counterStrategy;
+    } else {
+        // Weight tactics based on situation
+        const weights = {};
+        for (const tactic of availableTactics) {
+            weights[tactic] = 1;
+        }
+
+        // Don't repeat last 2 tactics
+        const recentTactics = commanderAI.tacticsUsed.slice(-2);
+        for (const t of recentTactics) {
+            if (weights[t] !== undefined) weights[t] *= 0.2;
+        }
+
+        // If player has few towers, rush; if many, overwhelm
+        if (gameState.towers.length <= 3) {
+            weights['rush'] = (weights['rush'] || 0) * 2;
+        } else if (gameState.towers.length >= 8) {
+            weights['overwhelm'] = (weights['overwhelm'] || 0) * 2;
+        }
+
+        // If we found weak points, prefer flank
+        if (commanderAI.weakPoints.length > PATH_CELLS.length * 0.3 && weights['flank']) {
+            weights['flank'] *= 2.5;
+        }
+
+        // High aggression prefers armor and siege
+        if (commanderAI.aggressionLevel > 0.7) {
+            weights['armor'] = (weights['armor'] || 0) * 1.8;
+            if (weights['siege']) weights['siege'] *= 1.5;
+        }
+
+        // Weighted random selection
+        const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
+        let roll = Math.random() * totalWeight;
+        for (const [tactic, weight] of Object.entries(weights)) {
+            roll -= weight;
+            if (roll <= 0) {
+                chosenTactic = tactic;
+                break;
+            }
+        }
+    }
+
+    commanderAI.tacticsUsed.push(chosenTactic);
+    commanderAI.currentTactic = chosenTactic;
+
+    // Choose formation based on tactic
+    switch (chosenTactic) {
+        case 'armor':
+            commanderAI.formationType = 'tank_shield';
+            break;
+        case 'rush':
+            commanderAI.formationType = 'speed_burst';
+            break;
+        case 'counter':
+        case 'overwhelm':
+            commanderAI.formationType = commanderAI.counterStrategy === 'spread' ? 'spread' : null;
+            break;
+        default:
+            commanderAI.formationType = Math.random() < commanderAI.aggressionLevel * 0.4 ? 'tank_shield' : null;
+    }
+
+    // Sometimes send scouts in commander waves
+    commanderAI.scoutWaveActive = (waveNum % 3 === 0) && Math.random() < 0.5;
+
+    // Show notification
+    const tacticMessages = {
+        'standard': null,
+        'rush': '\u26a0\ufe0f ENEMY COMMANDER: Rush assault incoming!',
+        'armor': '\u26a0\ufe0f ENEMY COMMANDER: Armor assault incoming!',
+        'siege': '\u26a0\ufe0f ENEMY COMMANDER: Siege bombardment detected!',
+        'flank': '\u26a0\ufe0f ENEMY COMMANDER: Flanking maneuver detected!',
+        'overwhelm': '\u26a0\ufe0f ENEMY COMMANDER: Mass assault incoming!',
+        'counter': '\u26a0\ufe0f ENEMY COMMANDER: Counter-strategy deployed!',
+    };
+
+    const msg = tacticMessages[chosenTactic];
+    if (msg) showCommanderNotification(msg);
+
+    if (commanderAI.scoutWaveActive) {
+        showCommanderNotification('\u26a0\ufe0f ENEMY COMMANDER: Sending scouts ahead...');
+    }
+
+    if (commanderAI.formationType === 'tank_shield') {
+        showCommanderNotification('\u26a0\ufe0f ENEMY COMMANDER: Tank shield formation!');
+    } else if (commanderAI.formationType === 'spread') {
+        showCommanderNotification('\u26a0\ufe0f ENEMY COMMANDER: Enemies spreading out!');
+    }
+
+    return chosenTactic;
+}
+
+// Evaluate how well the last wave went for the enemies
+function commanderEvaluateLastWave() {
+    const total = commanderAI.lastWaveEnemiesTotal;
+    if (total === 0) {
+        commanderAI.lastWaveResult = null;
+        return;
+    }
+    const killed = commanderAI.lastWaveEnemiesKilled;
+    const survivalRate = 1 - (killed / total);
+    const baseDmg = commanderAI.lastWaveBaseDamage;
+
+    if (survivalRate < 0.05 && baseDmg < 5) {
+        commanderAI.lastWaveResult = 'crushed';   // enemies got wiped
+    } else if (survivalRate < 0.2) {
+        commanderAI.lastWaveResult = 'poor';
+    } else if (survivalRate < 0.5) {
+        commanderAI.lastWaveResult = 'decent';
+    } else {
+        commanderAI.lastWaveResult = 'good';       // enemies did well
+    }
+}
+
 function generateWave(waveNum) {
     const enemies = [];
     const isBossWave = waveNum % 5 === 0;
 
-    // Total enemies scales linearly
-    const totalEnemies = Math.floor(6 + waveNum * 1.5);
+    // Commander AI chooses tactic
+    const tactic = commanderChooseTactic(waveNum);
 
-    // Distribution with ±20% randomness
+    // Base total enemies scales linearly
+    let totalEnemies = Math.floor(6 + waveNum * 1.5);
+
+    // Tactic modifiers to total count
+    if (tactic === 'overwhelm') {
+        totalEnemies = Math.floor(totalEnemies * (1.4 + commanderAI.aggressionLevel * 0.3));
+    } else if (tactic === 'rush') {
+        totalEnemies = Math.floor(totalEnemies * 1.2);
+    }
+
+    // Distribution with randomness
     const randFactor = () => 0.8 + Math.random() * 0.4;
 
-    const infantryPct = (0.6 - Math.min(0.1, waveNum * 0.005)) * randFactor();
-    const jeepPct = waveNum >= 4 ? (0.05 + Math.min(0.20, (waveNum - 4) * 0.03)) * randFactor() : 0;
-    const tankPct = waveNum >= 8 ? (0.1 * randFactor()) : 0;
-    const specialPct = waveNum >= 6 ? (0.08 * randFactor()) : 0;
-    const artPct = waveNum >= 10 ? (0.05 * randFactor()) : 0;
+    // Base percentages
+    let infantryPct = (0.6 - Math.min(0.1, waveNum * 0.005)) * randFactor();
+    let jeepPct = waveNum >= 4 ? (0.05 + Math.min(0.20, (waveNum - 4) * 0.03)) * randFactor() : 0;
+    let tankPct = waveNum >= 8 ? (0.1 * randFactor()) : 0;
+    let specialPct = waveNum >= 6 ? (0.08 * randFactor()) : 0;
+    let artPct = waveNum >= 10 ? (0.05 * randFactor()) : 0;
+    let runnerPctBoost = 0;
 
-    const total = infantryPct + jeepPct + tankPct + specialPct + artPct;
+    // Commander tactic adjustments (wave 6+)
+    if (waveNum >= 6) {
+        switch (tactic) {
+            case 'rush':
+                runnerPctBoost = 0.35;
+                infantryPct *= 0.5;
+                jeepPct *= 1.5;
+                break;
+            case 'armor':
+                tankPct = Math.max(tankPct, 0.3) * (1 + commanderAI.aggressionLevel * 0.5);
+                jeepPct *= 0.5;
+                infantryPct *= 0.6;
+                break;
+            case 'siege':
+                artPct = Math.max(artPct, 0.2) * (1 + commanderAI.aggressionLevel * 0.4);
+                tankPct = Math.max(tankPct, 0.15);
+                break;
+            case 'overwhelm':
+                infantryPct *= 1.6;
+                specialPct *= 1.3;
+                break;
+            case 'flank':
+                jeepPct = Math.max(jeepPct, 0.15) * 1.5;
+                runnerPctBoost = 0.15;
+                break;
+            case 'counter':
+                if (commanderAI.counterStrategy === 'armor') {
+                    tankPct = Math.max(tankPct, 0.35); infantryPct *= 0.4;
+                } else if (commanderAI.counterStrategy === 'rush') {
+                    runnerPctBoost = 0.4; infantryPct *= 0.3; jeepPct *= 1.8;
+                } else if (commanderAI.counterStrategy === 'siege') {
+                    artPct = Math.max(artPct, 0.25); tankPct = Math.max(tankPct, 0.15);
+                } else if (commanderAI.counterStrategy === 'overwhelm') {
+                    infantryPct *= 2.0; totalEnemies = Math.floor(totalEnemies * 1.3);
+                } else if (commanderAI.counterStrategy === 'spread') {
+                    jeepPct = Math.max(jeepPct, 0.15); runnerPctBoost = 0.1;
+                }
+                break;
+        }
+    }
+
+    const total = infantryPct + jeepPct + tankPct + specialPct + artPct + runnerPctBoost;
 
     const infantryCount = Math.max(2, Math.round(totalEnemies * infantryPct / total));
     const jeepCount = Math.round(totalEnemies * jeepPct / total);
     const tankCount = Math.round(totalEnemies * tankPct / total);
-    const artCount = waveNum >= 4 ? Math.min(3, Math.round(totalEnemies * artPct / total)) : 0;
+    const artCount = waveNum >= 4 ? Math.min(5, Math.round(totalEnemies * artPct / total)) : 0;
     const specialCount = Math.round(totalEnemies * specialPct / total);
+    const extraRunners = Math.round(totalEnemies * runnerPctBoost / total);
 
     // Split specials between runners and saboteurs
-    const runnerCount = Math.ceil(specialCount * 0.6);
-    const saboteurCount = specialCount - runnerCount;
+    const runnerCount = Math.ceil(specialCount * 0.6) + extraRunners;
+    const saboteurCount = specialCount - Math.ceil(specialCount * 0.6);
 
     for (let i = 0; i < infantryCount; i++) enemies.push({ type: 'infantry', isBoss: false });
     for (let i = 0; i < jeepCount; i++) enemies.push({ type: 'jeep', isBoss: false });
@@ -4060,10 +4826,27 @@ function generateWave(waveNum) {
         enemies.push({ type: bossType, isBoss: true });
     }
 
-    // Shuffle
-    for (let i = enemies.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [enemies[i], enemies[j]] = [enemies[j], enemies[i]];
+    // --- Commander formation ordering ---
+    if (commanderAI.formationType === 'tank_shield' && tankCount > 0) {
+        enemies.sort((a, b) => {
+            if (a.isBoss) return 1; if (b.isBoss) return -1;
+            if (a.type === 'tank' && b.type !== 'tank') return -1;
+            if (b.type === 'tank' && a.type !== 'tank') return 1;
+            return 0;
+        });
+    } else if (commanderAI.formationType === 'speed_burst') {
+        enemies.sort((a, b) => {
+            if (a.isBoss) return 1; if (b.isBoss) return -1;
+            const aSpd = ENEMY_DEFS[a.type] ? ENEMY_DEFS[a.type].speed : 0;
+            const bSpd = ENEMY_DEFS[b.type] ? ENEMY_DEFS[b.type].speed : 0;
+            return bSpd - aSpd;
+        });
+    } else {
+        // Default shuffle
+        for (let i = enemies.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [enemies[i], enemies[j]] = [enemies[j], enemies[i]];
+        }
     }
 
     // Put boss at end
@@ -4075,18 +4858,112 @@ function generateWave(waveNum) {
         }
     }
 
+    // --- Scout system: insert scouts at front ---
+    if (commanderAI.scoutWaveActive && waveNum >= 4) {
+        const scoutCount = Math.min(3, Math.max(1, Math.floor(waveNum / 5)));
+        for (let i = 0; i < scoutCount; i++) {
+            enemies.unshift({ type: 'runner', isBoss: false, isScout: true });
+        }
+    }
+
+    // Adaptive difficulty: add extra enemies when player is dominating
+    if (adaptiveDifficulty.performanceScore > 65) {
+        const extraCount = Math.floor(enemies.length * (adaptiveDifficulty.difficultyMultiplier - 1) * 0.5);
+        for (let i = 0; i < extraCount; i++) {
+            enemies.push({ type: 'infantry', isBoss: false });
+        }
+    }
+
+    // Tag all enemies with commander metadata
+    const formation = commanderAI.formationType;
+    for (const e of enemies) {
+        e.commanderTactic = tactic;
+        e.formation = formation;
+        if (!e.isScout) e.isScout = false;
+    }
+
+    // === STAGING GROUP ASSIGNMENT ===
+    // Divide enemies into staging groups that gather at spawn before advancing
+    const totalCount = enemies.length;
+    let numGroups;
+    if (tactic === 'overwhelm') {
+        numGroups = 1; // all enemies stage together in one massive group
+    } else {
+        numGroups = Math.min(4, Math.max(2, Math.ceil(totalCount / Math.max(3, Math.ceil(totalCount / 3)))));
+    }
+    const groupSize = Math.ceil(totalCount / numGroups);
+
+    // Use a unique base ID per wave to avoid collisions across waves
+    const groupIdBase = waveNum * 100;
+
+    for (let i = 0; i < enemies.length; i++) {
+        const groupIdx = Math.floor(i / groupSize);
+        enemies[i].groupId = groupIdBase + groupIdx;
+        enemies[i].staging = true; // all enemies start in staging mode
+    }
+
+    // Within each group, sort so tanks/heavy units spawn first (they lead the charge)
+    // But preserve the overall group ordering
+    const grouped = [];
+    for (let g = 0; g < numGroups; g++) {
+        const gId = groupIdBase + g;
+        const groupMembers = enemies.filter(e => e.groupId === gId);
+        // Sort within group: tanks > enemyArt > jeep > infantry > runner > saboteur
+        // Bosses always last in their group
+        const typePriority = { tank: 0, enemyArt: 1, jeep: 2, infantry: 3, saboteur: 4, runner: 5 };
+        groupMembers.sort((a, b) => {
+            if (a.isBoss) return 1;
+            if (b.isBoss) return -1;
+            return (typePriority[a.type] || 3) - (typePriority[b.type] || 3);
+        });
+        grouped.push(...groupMembers);
+    }
+    // Replace enemies array content with grouped ordering
+    enemies.length = 0;
+    enemies.push(...grouped);
+
+    // Track enemy count for wave evaluation
+    commanderAI.lastWaveEnemiesTotal = enemies.length;
+    commanderAI.lastWaveEnemiesKilled = 0;
+    commanderAI.lastWaveBaseDamage = 0;
+
     return enemies;
 }
 
 function startWave() {
     playSound('wave_start');
     blastsThisWave = 0; // reset blast limit
+
+    // Track wave survival for heat map (did we lose HP last wave?)
+    if (gameState.wave > 0) {
+        const lostHP = gameState.baseHP < heatMapData.baseHPAtWaveStart;
+        heatMapData.waveSurvival.push(!lostHP);
+    }
+    heatMapData.baseHPAtWaveStart = gameState.baseHP;
+
+    // --- Commander AI: evaluate last wave and analyze defenses ---
+    commanderEvaluateLastWave();
+    commanderAnalyzeDefenses();
+
+    // --- Adaptive Difficulty: record wave-start snapshot ---
+    adaptiveDifficulty.waveStartBaseHP = gameState.baseHP;
+    adaptiveDifficulty.waveStartMoney = gameState.money;
+    adaptiveDifficulty.waveStartTowerCount = gameState.towers.length;
+    adaptiveDifficulty.currentWaveStartTime = performance.now();
+    adaptiveDifficulty.waveEnemiesSpawned = 0;
+    adaptiveDifficulty.waveEnemiesKilled = 0;
+
     gameState.wave++;
     gameState.waveActive = true;
     gameState.autoWaveTimer = 0;
     const newEnemies = generateWave(gameState.wave);
     gameState.enemiesToSpawn = gameState.enemiesToSpawn.concat(newEnemies);
     gameState.spawnInterval = Math.max(0.2, 0.45 - gameState.wave * 0.01);
+
+    // Flank tactic: stagger spawn intervals
+    if (commanderAI.currentTactic === 'flank') {
+        gameState.spawnInterval *= 1.8; // wider gaps create flanking groups
+    }
 
     document.getElementById('wave-number').textContent = gameState.wave;
     updateWavePreview();
@@ -4108,13 +4985,35 @@ function startWave() {
 }
 
 function updateWave(dt) {
-    // Spawn enemies from queue
+    // Spawn enemies from queue (with staging group awareness)
     if (gameState.enemiesToSpawn.length > 0) {
         gameState.spawnTimer -= dt;
         if (gameState.spawnTimer <= 0) {
-            const enemyDef = gameState.enemiesToSpawn.shift();
-            spawnEnemy(enemyDef.type, enemyDef.isBoss, gameState.wave);
-            gameState.spawnTimer = gameState.spawnInterval;
+            const nextEnemy = gameState.enemiesToSpawn[0];
+
+            // Check if the next enemy's group is different from current staging group
+            // If so, wait until the current staging group has been released before spawning next group
+            const currentStagingEnemies = gameState.enemies.filter(e => !e.dead && e.staging);
+            const hasActiveStagingGroup = currentStagingEnemies.length > 0;
+            const nextGroupId = nextEnemy.groupId;
+
+            if (hasActiveStagingGroup) {
+                const currentStagingGroupId = currentStagingEnemies[0].groupId;
+                if (nextGroupId !== currentStagingGroupId) {
+                    // Don't spawn next group yet - wait for current staging group to advance
+                    gameState.spawnTimer = 0.1; // check again soon
+                } else {
+                    // Same group - spawn quickly to fill the staging area
+                    const enemyDef = gameState.enemiesToSpawn.shift();
+                    spawnEnemy(enemyDef.type, enemyDef.isBoss, gameState.wave, enemyDef);
+                    gameState.spawnTimer = Math.min(gameState.spawnInterval, 0.15); // fast spawn within group
+                }
+            } else {
+                // No active staging group - spawn normally
+                const enemyDef = gameState.enemiesToSpawn.shift();
+                spawnEnemy(enemyDef.type, enemyDef.isBoss, gameState.wave, enemyDef);
+                gameState.spawnTimer = Math.min(gameState.spawnInterval, 0.15); // fast spawn within group
+            }
         }
     }
 
@@ -4126,6 +5025,12 @@ function updateWave(dt) {
         gameState.money += bonus;
         updateMoneyDisplay();
         updateWavePreview();
+
+        // --- Adaptive Difficulty: analyze and adjust at end of wave ---
+        adaptiveAnalyzeWave();
+        adaptiveAdjustDifficulty();
+        updateDifficultyIndicator();
+
         saveGame();
     }
 
@@ -4424,6 +5329,7 @@ function update(dt) {
     updateAirstrikes(dt);
     updateFusionAbilities(dt);
     updateRepairVehicle(dt);
+    updateCommanderNotifications(dt);
 
     // Update info panel if a tower is selected
     if (gameState.selectedTower) {
@@ -4462,6 +5368,9 @@ function render() {
     drawParticles();
 
     ctx.restore();
+
+    // Draw commander notifications in screen space (after restore)
+    drawCommanderNotifications();
 }
 
 const TARGET_FPS = 30;
@@ -4499,7 +5408,27 @@ function saveGame() {
         deadTowers: gameState.deadTowers.map(d => ({ type: d.type, soldierName: d.soldierName, rank: d.rank, kills: d.kills, hpDestroyed: d.hpDestroyed, wave: d.wave })),
         grid: gameState.grid, blastTiles: gameState.blastTiles.map(b => ({ col: b.col, row: b.row })),
         destroyedTiles: Array.from(gameState.destroyedTiles.entries()).map(([key, info]) => ({ key, wave: info.wave, recovery: info.recovery })),
-        landmines: gameState.landmines.map(m => ({ x: m.x, y: m.y, col: m.col, row: m.row, damage: m.damage, radius: m.radius }))
+        landmines: gameState.landmines.map(m => ({ x: m.x, y: m.y, col: m.col, row: m.row, damage: m.damage, radius: m.radius })),
+        commanderAI: {
+            scoutData: commanderAI.scoutData,
+            playerStrength: commanderAI.playerStrength,
+            lastWaveResult: commanderAI.lastWaveResult,
+            tacticsUsed: commanderAI.tacticsUsed,
+            counterStrategy: commanderAI.counterStrategy,
+            aggressionLevel: commanderAI.aggressionLevel,
+            currentTactic: commanderAI.currentTactic
+        },
+        adaptiveDifficulty: {
+            performanceScore: adaptiveDifficulty.performanceScore,
+            difficultyMultiplier: adaptiveDifficulty.difficultyMultiplier,
+            moneyMultiplier: adaptiveDifficulty.moneyMultiplier,
+            speedMultiplier: adaptiveDifficulty.speedMultiplier,
+            streakWins: adaptiveDifficulty.streakWins,
+            streakLosses: adaptiveDifficulty.streakLosses,
+            totalBaseHPLost: adaptiveDifficulty.totalBaseHPLost,
+            waveClearTimes: adaptiveDifficulty.waveClearTimes,
+            adjustmentHistory: adaptiveDifficulty.adjustmentHistory
+        }
     };
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveData)); showSaveNotification(); updateContinueButton(); return true; }
     catch (e) { console.error('Failed to save:', e); return false; }
@@ -4540,8 +5469,34 @@ function loadGame() {
         }));
         gameState.deadTowers = data.deadTowers || [];
         gameState.landmines = data.landmines || [];
+        // Restore Commander AI state
+        commanderReset();
+        commanderNotifications = [];
+        if (data.commanderAI) {
+            commanderAI.scoutData = data.commanderAI.scoutData || [];
+            commanderAI.playerStrength = data.commanderAI.playerStrength || 0;
+            commanderAI.lastWaveResult = data.commanderAI.lastWaveResult || null;
+            commanderAI.tacticsUsed = data.commanderAI.tacticsUsed || [];
+            commanderAI.counterStrategy = data.commanderAI.counterStrategy || null;
+            commanderAI.aggressionLevel = data.commanderAI.aggressionLevel || 0.5;
+            commanderAI.currentTactic = data.commanderAI.currentTactic || 'standard';
+        }
+        // Restore Adaptive Difficulty state
+        resetAdaptiveDifficulty();
+        if (data.adaptiveDifficulty) {
+            adaptiveDifficulty.performanceScore = data.adaptiveDifficulty.performanceScore || 50;
+            adaptiveDifficulty.difficultyMultiplier = data.adaptiveDifficulty.difficultyMultiplier || 1.0;
+            adaptiveDifficulty.moneyMultiplier = data.adaptiveDifficulty.moneyMultiplier || 1.0;
+            adaptiveDifficulty.speedMultiplier = data.adaptiveDifficulty.speedMultiplier || 1.0;
+            adaptiveDifficulty.streakWins = data.adaptiveDifficulty.streakWins || 0;
+            adaptiveDifficulty.streakLosses = data.adaptiveDifficulty.streakLosses || 0;
+            adaptiveDifficulty.totalBaseHPLost = data.adaptiveDifficulty.totalBaseHPLost || 0;
+            adaptiveDifficulty.waveClearTimes = data.adaptiveDifficulty.waveClearTimes || [];
+            adaptiveDifficulty.adjustmentHistory = data.adaptiveDifficulty.adjustmentHistory || [];
+        }
         recalcPathWaypoints();
         updateMoneyDisplay(); updateHPBar(); updateTowerButtons(); updateCPDisplay(); updatePOWDisplay();
+        updateDifficultyIndicator();
         document.getElementById('wave-number').textContent = gameState.wave;
         document.getElementById('tower-info').classList.add('hidden');
         document.getElementById('game-over').classList.add('hidden');
@@ -4613,6 +5568,11 @@ function gameOver() {
         entry.classList.add('hidden');
     }
     renderHighScores('highscore-list');
+
+    // ---- Post-Game Heat Map & Stats ----
+    gatherTowerPerformanceData();
+    drawHeatMap();
+    showPostGameStats();
 }
 
 // High score save button
@@ -4635,6 +5595,7 @@ document.getElementById('start-highscores-btn').addEventListener('click', () => 
 
 function startGame() {
     setGameSpeed(1);
+    resetHeatMapData();
     gameState = {
         running: true,
         money: 3000,
@@ -4678,6 +5639,12 @@ function startGame() {
     shortcutWaypoints = null;
     initGrid();
     recalcPathWaypoints();
+    // Reset Commander AI
+    commanderReset();
+    commanderNotifications = [];
+    // Reset Adaptive Difficulty
+    resetAdaptiveDifficulty();
+    updateDifficultyIndicator();
     updateMoneyDisplay();
     updateHPBar();
     updateTowerButtons();
@@ -5793,6 +6760,296 @@ document.querySelectorAll('.target-btn').forEach(btn => {
         btn.classList.add('active');
     });
 });
+
+
+// ============================================================
+// POST-GAME HEAT MAP & STATS SYSTEM
+// ============================================================
+
+function gatherTowerPerformanceData() {
+    for (const tower of gameState.towers) {
+        const tKey = `${tower.col},${tower.row}`;
+        heatMapData.towerDamageDealt[tKey] = tower.hpDestroyed || 0;
+        if (!heatMapData.towerKills[tKey]) {
+            heatMapData.towerKills[tKey] = {
+                type: tower.type, kills: tower.kills || 0,
+                totalDamage: tower.hpDestroyed || 0,
+                name: tower.soldierName || TOWER_DEFS[tower.type].name
+            };
+        } else {
+            heatMapData.towerKills[tKey].totalDamage = tower.hpDestroyed || 0;
+            heatMapData.towerKills[tKey].kills = tower.kills || 0;
+        }
+    }
+    for (const dt of gameState.deadTowers) {
+        const tKey = `dead_${dt.soldierName || Math.random().toFixed(4)}`;
+        if (!heatMapData.towerKills[tKey]) {
+            heatMapData.towerKills[tKey] = {
+                type: dt.type, kills: dt.kills || 0,
+                totalDamage: dt.hpDestroyed || 0,
+                name: dt.soldierName || TOWER_DEFS[dt.type].name
+            };
+        }
+    }
+}
+
+function drawHeatMap() {
+    const hmCanvas = document.getElementById('heatmap-canvas');
+    if (!hmCanvas) return;
+    const hctx = hmCanvas.getContext('2d');
+    const W = hmCanvas.width;
+    const H = hmCanvas.height;
+    hctx.clearRect(0, 0, W, H);
+    hctx.fillStyle = '#0a0f0a';
+    hctx.fillRect(0, 0, W, H);
+
+    const scaleX = W / (GRID_COLS * TILE_W);
+    const scaleY = H / ((GRID_COLS + GRID_ROWS) * TILE_H / 2 + 40);
+    const scale = Math.min(scaleX, scaleY) * 0.85;
+    const offsetX = W / 2;
+    const offsetY = 25;
+
+    function miniIso(col, row) {
+        return { x: offsetX + (col - row) * (TILE_W / 2) * scale, y: offsetY + (col + row) * (TILE_H / 2) * scale };
+    }
+    function miniCenter(col, row) {
+        const p = miniIso(col, row);
+        return { x: p.x, y: p.y + (TILE_H / 2) * scale };
+    }
+
+    // Draw grid tiles
+    for (let c = 0; c < GRID_COLS; c++) {
+        for (let r = 0; r < GRID_ROWS; r++) {
+            const p = miniCenter(c, r);
+            const hw = (TILE_W / 2) * scale * 0.92;
+            const hh = (TILE_H / 2) * scale * 0.92;
+            const isPath = pathSet.has(`${c},${r}`);
+            hctx.beginPath();
+            hctx.moveTo(p.x, p.y - hh); hctx.lineTo(p.x + hw, p.y);
+            hctx.lineTo(p.x, p.y + hh); hctx.lineTo(p.x - hw, p.y);
+            hctx.closePath();
+            hctx.fillStyle = isPath ? 'rgba(90, 80, 50, 0.5)' : 'rgba(20, 40, 20, 0.4)';
+            hctx.fill();
+            hctx.strokeStyle = 'rgba(60, 80, 60, 0.3)';
+            hctx.lineWidth = 0.5;
+            hctx.stroke();
+        }
+    }
+
+    // Draw path line
+    hctx.strokeStyle = 'rgba(180, 160, 100, 0.6)';
+    hctx.lineWidth = 2 * scale;
+    hctx.setLineDash([4 * scale, 3 * scale]);
+    hctx.beginPath();
+    for (let i = 0; i < PATH_CELLS.length; i++) {
+        const p = miniCenter(PATH_CELLS[i].c, PATH_CELLS[i].r);
+        if (i === 0) hctx.moveTo(p.x, p.y); else hctx.lineTo(p.x, p.y);
+    }
+    hctx.stroke();
+    hctx.setLineDash([]);
+
+    // Max kills for color scaling
+    let maxKills = 1;
+    for (const key in heatMapData.killGrid) {
+        if (heatMapData.killGrid[key] > maxKills) maxKills = heatMapData.killGrid[key];
+    }
+
+    // Draw kill heat circles
+    for (const key in heatMapData.killGrid) {
+        const [col, row] = key.split(',').map(Number);
+        if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) continue;
+        const count = heatMapData.killGrid[key];
+        const intensity = count / maxKills;
+        const p = miniCenter(col, row);
+
+        let cr, cg, cb;
+        if (intensity < 0.33) {
+            const t = intensity / 0.33;
+            cr = Math.floor(30 + t * 200); cg = Math.floor(180 + t * 75); cb = 30;
+        } else if (intensity < 0.66) {
+            const t = (intensity - 0.33) / 0.33;
+            cr = Math.floor(230 + t * 25); cg = Math.floor(255 - t * 120); cb = 20;
+        } else {
+            const t = (intensity - 0.66) / 0.34;
+            cr = 255; cg = Math.floor(135 - t * 100); cb = Math.floor(20 + t * 30);
+        }
+
+        const radius = (6 + intensity * 12) * scale;
+        const alpha = 0.3 + intensity * 0.55;
+
+        const gradient = hctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius * 1.5);
+        gradient.addColorStop(0, `rgba(${cr},${cg},${cb},${alpha})`);
+        gradient.addColorStop(0.6, `rgba(${cr},${cg},${cb},${alpha * 0.4})`);
+        gradient.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+        hctx.fillStyle = gradient;
+        hctx.beginPath(); hctx.arc(p.x, p.y, radius * 1.5, 0, Math.PI * 2); hctx.fill();
+
+        hctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha + 0.15})`;
+        hctx.beginPath(); hctx.arc(p.x, p.y, radius * 0.5, 0, Math.PI * 2); hctx.fill();
+
+        if (count >= 3) {
+            hctx.fillStyle = '#fff';
+            hctx.font = `bold ${Math.max(7, 9 * scale)}px monospace`;
+            hctx.textAlign = 'center'; hctx.textBaseline = 'middle';
+            hctx.fillText(count, p.x, p.y);
+        }
+    }
+
+    // Draw tower positions
+    for (const tower of gameState.towers) {
+        const col = tower.col;
+        const row = tower.row;
+        const p = miniCenter(col, row);
+        const sz = 4 * scale;
+        const def = TOWER_DEFS[tower.type];
+        hctx.fillStyle = def ? def.color : '#888';
+        hctx.fillRect(p.x - sz, p.y - sz, sz * 2, sz * 2);
+        hctx.strokeStyle = '#fff'; hctx.lineWidth = 0.8;
+        hctx.strokeRect(p.x - sz, p.y - sz, sz * 2, sz * 2);
+        if (tower.kills > 0) {
+            hctx.fillStyle = '#ffd700';
+            hctx.font = `bold ${Math.max(6, 8 * scale)}px monospace`;
+            hctx.textAlign = 'center'; hctx.textBaseline = 'bottom';
+            hctx.fillText(tower.kills, p.x, p.y - sz - 1);
+        }
+    }
+
+    // Base marker
+    if (PATH_CELLS.length > 0) {
+        const bt = PATH_CELLS[PATH_CELLS.length - 1];
+        const bp = miniCenter(bt.c, bt.r);
+        hctx.fillStyle = '#4caf50'; hctx.strokeStyle = '#81c784'; hctx.lineWidth = 2;
+        hctx.beginPath(); hctx.arc(bp.x, bp.y, 5 * scale, 0, Math.PI * 2); hctx.fill(); hctx.stroke();
+        hctx.fillStyle = '#fff'; hctx.font = `bold ${Math.max(7, 9 * scale)}px sans-serif`;
+        hctx.textAlign = 'center'; hctx.textBaseline = 'middle'; hctx.fillText('B', bp.x, bp.y);
+    }
+    // Spawn marker
+    if (PATH_CELLS.length > 0) {
+        const st = PATH_CELLS[0];
+        const sp = miniCenter(st.c, st.r);
+        hctx.fillStyle = '#f44336'; hctx.strokeStyle = '#e57373'; hctx.lineWidth = 2;
+        hctx.beginPath(); hctx.arc(sp.x, sp.y, 5 * scale, 0, Math.PI * 2); hctx.fill(); hctx.stroke();
+        hctx.fillStyle = '#fff'; hctx.font = `bold ${Math.max(7, 9 * scale)}px sans-serif`;
+        hctx.textAlign = 'center'; hctx.textBaseline = 'middle'; hctx.fillText('S', sp.x, sp.y);
+    }
+
+    // Legend bar
+    const legendX = W - 120, legendY = 12, legendW = 100, legendH = 10;
+    const lgGrad = hctx.createLinearGradient(legendX, legendY, legendX + legendW, legendY);
+    lgGrad.addColorStop(0, 'rgba(30, 180, 30, 0.8)');
+    lgGrad.addColorStop(0.33, 'rgba(230, 255, 30, 0.8)');
+    lgGrad.addColorStop(0.66, 'rgba(255, 135, 20, 0.8)');
+    lgGrad.addColorStop(1, 'rgba(255, 35, 50, 0.8)');
+    hctx.fillStyle = lgGrad;
+    hctx.fillRect(legendX, legendY, legendW, legendH);
+    hctx.strokeStyle = 'rgba(200,200,200,0.5)'; hctx.lineWidth = 1;
+    hctx.strokeRect(legendX, legendY, legendW, legendH);
+    hctx.fillStyle = '#aaa'; hctx.font = '9px sans-serif';
+    hctx.textAlign = 'left'; hctx.textBaseline = 'top';
+    hctx.fillText('Low', legendX, legendY + legendH + 2);
+    hctx.textAlign = 'right';
+    hctx.fillText('High', legendX + legendW, legendY + legendH + 2);
+    hctx.textAlign = 'center';
+    hctx.fillText('KILL DENSITY', legendX + legendW / 2, legendY - 11);
+
+    // Title
+    hctx.fillStyle = '#c9a84c'; hctx.font = 'bold 12px sans-serif';
+    hctx.textAlign = 'left'; hctx.textBaseline = 'top';
+    hctx.fillText('TACTICAL HEAT MAP', 10, 6);
+}
+
+function formatDamage(dmg) {
+    if (dmg >= 1000000) return (dmg / 1000000).toFixed(1) + 'M';
+    if (dmg >= 1000) return (dmg / 1000).toFixed(1) + 'K';
+    return Math.floor(dmg).toString();
+}
+
+function showPostGameStats() {
+    const statsEl = document.getElementById('postgame-stats');
+    if (!statsEl) return;
+
+    const towerList = [];
+    for (const key in heatMapData.towerKills) {
+        towerList.push({ key, ...heatMapData.towerKills[key] });
+    }
+    towerList.sort((a, b) => b.kills - a.kills || b.totalDamage - a.totalDamage);
+
+    let biggestKillZone = { key: 'N/A', count: 0 };
+    for (const key in heatMapData.killGrid) {
+        if (heatMapData.killGrid[key] > biggestKillZone.count) {
+            biggestKillZone = { key, count: heatMapData.killGrid[key] };
+        }
+    }
+
+    const typeStats = {};
+    for (const t of towerList) {
+        if (!typeStats[t.type]) typeStats[t.type] = { kills: 0, damage: 0 };
+        typeStats[t.type].kills += t.kills;
+        typeStats[t.type].damage += t.totalDamage;
+    }
+    let bestType = 'N/A', bestTypeKills = 0;
+    for (const type in typeStats) {
+        if (typeStats[type].kills > bestTypeKills) { bestType = type; bestTypeKills = typeStats[type].kills; }
+    }
+
+    const wavesClean = heatMapData.waveSurvival.filter(v => v).length;
+    const moneyEff = heatMapData.moneySpent > 0
+        ? (heatMapData.totalEnemiesKilled / heatMapData.moneySpent * 1000).toFixed(1) : '0';
+
+    let towerTableHTML = '';
+    if (towerList.length > 0) {
+        towerTableHTML = '<div class="hm-section-title">TOWER PERFORMANCE</div><table class="hm-tower-table"><thead><tr><th>#</th><th>Name</th><th>Type</th><th>Kills</th><th>Damage</th></tr></thead><tbody>';
+        const mx = Math.min(towerList.length, 10);
+        for (let i = 0; i < mx; i++) {
+            const t = towerList[i];
+            const def = TOWER_DEFS[t.type];
+            const rowClass = i === 0 ? ' class="hm-best-tower"' : (i === mx - 1 && mx > 1 ? ' class="hm-worst-tower"' : '');
+            const medal = i === 0 ? ' &#9733;' : '';
+            towerTableHTML += `<tr${rowClass}><td>${i + 1}${medal}</td><td>${t.name}</td><td>${def ? def.name : t.type}</td><td>${t.kills}</td><td>${formatDamage(t.totalDamage)}</td></tr>`;
+        }
+        towerTableHTML += '</tbody></table>';
+    }
+
+    const keyStatsHTML = `
+        <div class="hm-section-title">OPERATION SUMMARY</div>
+        <div class="hm-stats-grid">
+            <div class="hm-stat"><span class="hm-stat-label">Enemies Neutralized</span><span class="hm-stat-value">${heatMapData.totalEnemiesKilled}</span></div>
+            <div class="hm-stat"><span class="hm-stat-label">Waves Survived</span><span class="hm-stat-value">${gameState.wave}</span></div>
+            <div class="hm-stat"><span class="hm-stat-label">Clean Waves</span><span class="hm-stat-value">${wavesClean} / ${heatMapData.waveSurvival.length}</span></div>
+            <div class="hm-stat"><span class="hm-stat-label">Total Damage Dealt</span><span class="hm-stat-value">${formatDamage(heatMapData.totalDamageDealt)}</span></div>
+            <div class="hm-stat"><span class="hm-stat-label">Top Tower Type</span><span class="hm-stat-value">${bestType !== 'N/A' && TOWER_DEFS[bestType] ? TOWER_DEFS[bestType].name : 'N/A'}</span></div>
+            <div class="hm-stat"><span class="hm-stat-label">Biggest Kill Zone</span><span class="hm-stat-value">${biggestKillZone.key !== 'N/A' ? '(' + biggestKillZone.key.replace(',', ', ') + ') x' + biggestKillZone.count : 'N/A'}</span></div>
+            <div class="hm-stat"><span class="hm-stat-label">Kills per $1000</span><span class="hm-stat-value">${moneyEff}</span></div>
+            <div class="hm-stat"><span class="hm-stat-label">Peak Treasury</span><span class="hm-stat-value">$${Math.floor(heatMapData.peakMoney).toLocaleString()}</span></div>
+        </div>
+    `;
+
+    let analysisHTML = '<div class="hm-section-title">TACTICAL ANALYSIS</div><div class="hm-analysis">';
+    if (towerList.length > 0) {
+        const best = towerList[0];
+        const bestPos = best.key.includes('dead_') ? '' : ` at position (${best.key.replace(',', ', ')})`;
+        analysisHTML += `<p>Your strongest defense was <strong>${best.name}</strong>${bestPos} with ${best.kills} confirmed kills.</p>`;
+    }
+    if (bestType !== 'N/A' && heatMapData.totalEnemiesKilled > 0) {
+        const pct = Math.round(bestTypeKills / heatMapData.totalEnemiesKilled * 100);
+        const typeName = TOWER_DEFS[bestType] ? TOWER_DEFS[bestType].name : bestType;
+        analysisHTML += `<p>Your <strong>${typeName}</strong> towers were your MVPs with ${pct}% of all kills.</p>`;
+    }
+    if (biggestKillZone.key !== 'N/A') {
+        analysisHTML += `<p>Heavy enemy casualties at (${biggestKillZone.key.replace(',', ', ')}) indicate strong coverage there.</p>`;
+    }
+    if (heatMapData.waveSurvival.length > 0) {
+        const failedWaves = heatMapData.waveSurvival.filter(v => !v).length;
+        if (failedWaves === 0) {
+            analysisHTML += '<p>Outstanding defense! No base damage taken across all tracked waves.</p>';
+        } else {
+            analysisHTML += `<p>Base took damage during ${failedWaves} wave(s). Consider reinforcing the path near your base.</p>`;
+        }
+    }
+    analysisHTML += '</div>';
+
+    statsEl.innerHTML = keyStatsHTML + towerTableHTML + analysisHTML;
+}
 
 // ---- Initialize ----
 initGrid();
