@@ -890,31 +890,31 @@ const TOWER_DEFS = {
         name: 'Sniper', cost: 1500, damage: 80, fireRate: 1.2, range: 240,
         color: '#5c6bc0', projectileColor: '#e0e0e0', projectileSpeed: 900,
         splash: 0, slow: 0, stun: 0, dot: 0, description: 'High damage, slow fire',
-        unlockHP: 3000, towerHP: 90
+        unlockHP: 1500, towerHP: 90
     },
     flamethrower: {
         name: 'Flamethrower', cost: 3500, damage: 15, fireRate: 0.2, range: 96,
         color: '#ff9800', projectileColor: '#ff6f00', projectileSpeed: 0,
         splash: 0, slow: 0, stun: 0, dot: 6, description: 'Continuous cone, DOT',
-        unlockHP: 16000, towerHP: 320
+        unlockHP: 8000, towerHP: 320
     },
     missile: {
         name: 'Missile Launcher', cost: 12000, damage: 48, fireRate: 1.4, range: 192,
         color: '#ef5350', projectileColor: '#ff5722', projectileSpeed: 400,
         splash: 56, slow: 0, stun: 0, dot: 0, description: 'Area splash damage',
-        unlockHP: 50000, towerHP: 500
+        unlockHP: 25000, towerHP: 500
     },
     emp: {
         name: 'EMP', cost: 30000, damage: 20, fireRate: 1.2, range: 156,
         color: '#29b6f6', projectileColor: '#03a9f4', projectileSpeed: 500,
         splash: 0, slow: 0, stun: 1.4, dot: 0, description: 'Stuns vehicles & bosses',
-        unlockHP: 100000, towerHP: 650
+        unlockHP: 50000, towerHP: 650
     },
     artillery: {
         name: 'Artillery', cost: 60000, damage: 110, fireRate: 2.8, range: 216,
         color: '#8d6e63', projectileColor: '#795548', projectileSpeed: 300,
         splash: 70, slow: 0, stun: 0, dot: 0, description: 'Heavy area damage',
-        unlockHP: 120000, towerHP: 800
+        unlockHP: 80000, towerHP: 800
     }
 };
 
@@ -936,17 +936,17 @@ const RANKS = [
 // isArtillery: can blast open new paths
 const ENEMY_DEFS = {
     infantry: { name: 'Infantry', baseHP: 60, speed: 25, baseDmg: 8, rankXP: 1, color: '#a5d6a7', size: 6,
-                canShoot: true, shootRange: 55, shootDamage: 2, shootRate: 2.5, reward: 10 },
+                canShoot: true, shootRange: 55, shootDamage: 2, shootRate: 2.5, reward: 18 },
     jeep:     { name: 'Jeep',     baseHP: 800, speed: 40, baseDmg: 20, rankXP: 3, color: '#fff176', size: 8,
-                canShoot: true, shootRange: 75, shootDamage: 6, shootRate: 1.8, reward: 120 },
+                canShoot: true, shootRange: 75, shootDamage: 6, shootRate: 1.8, reward: 180 },
     tank:     { name: 'Tank',     baseHP: 2500, speed: 15, baseDmg: 50, rankXP: 10, color: '#ef9a9a', size: 12,
-                canShoot: true, shootRange: 95, shootDamage: 15, shootRate: 2.8, reward: 380 },
+                canShoot: true, shootRange: 95, shootDamage: 15, shootRate: 2.8, reward: 500 },
     enemyArt: { name: 'Enemy Artillery', baseHP: 700, speed: 10, baseDmg: 25, rankXP: 8, color: '#ff6e40', size: 14,
-                canShoot: true, shootRange: 85, shootDamage: 8, shootRate: 4.5, isArtillery: true, reward: 110 },
+                canShoot: true, shootRange: 85, shootDamage: 8, shootRate: 4.5, isArtillery: true, reward: 160 },
     runner:   { name: 'Runner', baseHP: 30, speed: 45, baseDmg: 5, rankXP: 1, color: '#81d4fa', size: 5,
-                canShoot: false, shootRange: 0, shootDamage: 0, shootRate: 999, reward: 4 },
+                canShoot: false, shootRange: 0, shootDamage: 0, shootRate: 999, reward: 8 },
     saboteur: { name: 'Saboteur', baseHP: 80, speed: 22, baseDmg: 3, rankXP: 2, color: '#ff8a80', size: 7,
-                canShoot: true, shootRange: 80, shootDamage: 15, shootRate: 2.5, targetsTowersOnly: true, reward: 11 }
+                canShoot: true, shootRange: 80, shootDamage: 15, shootRate: 2.5, targetsTowersOnly: true, reward: 15 }
 };
 
 // ---- Fusion Tower Bonuses ----
@@ -963,7 +963,7 @@ const FUSION_BONUSES = {
 // ---- Game State ----
 let gameState = {
     running: false,
-    money: 4000,
+    money: 3000,
     baseHP: BASE_MAX_HP,
     baseMaxHP: BASE_MAX_HP,
     wave: 0,
@@ -4511,12 +4511,12 @@ function updateParticles(dt) {
 // Wave Preview
 function getWavePreview(waveNum) {
     const isBossWave = waveNum % 5 === 0;
-    const totalEnemies = Math.floor(6 + waveNum * 1.5);
-    const infantryPct = 0.6 - Math.min(0.1, waveNum * 0.005);
-    const jeepPct = waveNum >= 4 ? 0.05 + Math.min(0.20, (waveNum - 4) * 0.03) : 0;
-    const tankPct = waveNum >= 8 ? 0.1 : 0;
-    const specialPct = waveNum >= 6 ? 0.08 : 0;
-    const artPct = waveNum >= 10 ? 0.05 : 0;
+    const totalEnemies = Math.floor(8 + waveNum * 2);
+    const infantryPct = 0.55 - Math.min(0.15, waveNum * 0.008);
+    const jeepPct = waveNum >= 3 ? 0.08 + Math.min(0.22, (waveNum - 3) * 0.035) : 0;
+    const tankPct = waveNum >= 6 ? 0.05 + Math.min(0.15, (waveNum - 6) * 0.02) : 0;
+    const specialPct = waveNum >= 4 ? 0.06 + Math.min(0.10, (waveNum - 4) * 0.01) : 0;
+    const artPct = waveNum >= 8 ? 0.04 + Math.min(0.08, (waveNum - 8) * 0.015) : 0;
     const total = infantryPct + jeepPct + tankPct + specialPct + artPct;
     const infantryCount = Math.max(2, Math.round(totalEnemies * infantryPct / total));
     const jeepCount = Math.round(totalEnemies * jeepPct / total);
@@ -4910,7 +4910,7 @@ function generateWave(waveNum) {
     const tactic = commanderChooseTactic(waveNum);
 
     // Base total enemies scales linearly
-    let totalEnemies = Math.floor(6 + waveNum * 1.5);
+    let totalEnemies = Math.floor(8 + waveNum * 2);
 
     // Tactic modifiers to total count
     if (tactic === 'overwhelm') {
@@ -4922,12 +4922,12 @@ function generateWave(waveNum) {
     // Distribution with randomness
     const randFactor = () => 0.8 + Math.random() * 0.4;
 
-    // Base percentages
-    let infantryPct = (0.6 - Math.min(0.1, waveNum * 0.005)) * randFactor();
-    let jeepPct = waveNum >= 4 ? (0.05 + Math.min(0.20, (waveNum - 4) * 0.03)) * randFactor() : 0;
-    let tankPct = waveNum >= 8 ? (0.1 * randFactor()) : 0;
-    let specialPct = waveNum >= 6 ? (0.08 * randFactor()) : 0;
-    let artPct = waveNum >= 10 ? (0.05 * randFactor()) : 0;
+    // Base percentages - variety introduced earlier
+    let infantryPct = (0.55 - Math.min(0.15, waveNum * 0.008)) * randFactor();
+    let jeepPct = waveNum >= 3 ? (0.08 + Math.min(0.22, (waveNum - 3) * 0.035)) * randFactor() : 0;
+    let tankPct = waveNum >= 6 ? (0.05 + Math.min(0.15, (waveNum - 6) * 0.02)) * randFactor() : 0;
+    let specialPct = waveNum >= 4 ? (0.06 + Math.min(0.10, (waveNum - 4) * 0.01)) * randFactor() : 0;
+    let artPct = waveNum >= 8 ? (0.04 + Math.min(0.08, (waveNum - 8) * 0.015)) * randFactor() : 0;
     let runnerPctBoost = 0;
 
     // Commander tactic adjustments (wave 6+)
@@ -5765,7 +5765,7 @@ function startGame() {
     resetHeatMapData();
     gameState = {
         running: true,
-        money: 4000,
+        money: 3000,
         baseHP: BASE_MAX_HP,
         baseMaxHP: BASE_MAX_HP,
         wave: 0,
