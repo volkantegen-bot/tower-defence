@@ -249,26 +249,37 @@ let musicState = {
     intervals: [],
     intensityTarget: 0.0, intensity: 0.0
 };
-const MUSIC_VOLUME = 0.14;
-const BPM = 150; // Fast, driving tempo
-const BEAT_MS = 60000 / BPM; // ~400ms per beat at 150 BPM
-const EIGHTH = BEAT_MS / 2; // eighth note
+const MUSIC_VOLUME = 0.18;
+const BPM = 132; // Fortunate Son tempo
+const BEAT_MS = 60000 / BPM;
+const EIGHTH = BEAT_MS / 2;
 
-// E minor pentatonic - powerful, heroic, universally epic
-const BASS_NOTES = [82.41, 98.00, 110.00, 123.47, 146.83, 164.81]; // E2-E3
-const LEAD_NOTES = [329.63, 392.00, 440.00, 493.88, 587.33, 659.26, 783.99]; // E4-E5+
-// Power chord roots for stabs
-const POWER_ROOTS = [82.41, 110.00, 123.47, 146.83]; // E, A, B, D
+// G major chords: [root, fifth] (simplified for performance)
+const CHORD_FREQS = {
+    G: [98.00, 146.83],   // G2, D3
+    C: [130.81, 196.00],  // C3, G3
+    D: [146.83, 220.00],  // D3, A3
+};
+// Progression: G-G-D-D-C-C-G-G | D-D-C-C-G-G-G-G (verse/chorus alternating)
+const PROGRESSION = ['G','G','D','D','C','C','G','G','D','D','C','C','G','G','G','G'];
 
-// Driving riff patterns (index into BASS_NOTES)
-const RIFF_PATTERNS = [
-    [0,0,2,2,3,3,2,0],     // E-E-A-A-B-B-A-E (classic power riff)
-    [0,0,0,2,3,5,3,2],     // E-E-E-A-B-E'-B-A (ascending burst)
-    [5,3,2,0,0,2,3,5],     // E'-B-A-E-E-A-B-E' (heroic arc)
-    [0,2,0,3,0,2,0,5],     // syncopated drive
-    [0,0,3,3,5,5,3,0],     // building power
-    [3,3,2,2,0,0,2,3],     // descending intensity
+// Lead melody (G major pentatonic)
+const LEAD_NOTES = [392.00, 440.00, 493.88, 587.33, 659.26, 783.99];
+const LEAD_PHRASES = [
+    [0,0,2,3,3,2,0,0],  [3,3,2,1,0,0,1,0],
+    [0,1,3,4,3,1,0,1],  [4,4,3,1,0,0,0,0],
+    [0,0,0,1,3,3,1,0],  [1,3,4,3,1,0,1,3],
 ];
+
+// Waveshaper for crunchy guitar
+function makeDistortion(amount) {
+    const n = 44100, curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+        const x = (i * 2) / n - 1;
+        curve[i] = ((3 + amount) * x * 20 * (Math.PI / 180)) / (Math.PI + amount * Math.abs(x));
+    }
+    return curve;
+}
 
 function startMusic() {
     if (!audioCtx || musicState.playing) return;
@@ -278,16 +289,28 @@ function startMusic() {
     musicState.masterGain.gain.value = musicState.muted ? 0 : MUSIC_VOLUME;
     musicState.masterGain.connect(audioCtx.destination);
 
-    // === SUB BASS - Constant low E for weight ===
-    musicState.bassOsc = audioCtx.createOscillator();
-    musicState.bassOsc.type = 'sine'; musicState.bassOsc.frequency.value = 41.2; // E1
-    musicState.bassGain = audioCtx.createGain(); musicState.bassGain.gain.value = 0.15;
-    const subFilter = audioCtx.createBiquadFilter();
-    subFilter.type = 'lowpass'; subFilter.frequency.value = 80;
-    musicState.bassOsc.connect(subFilter); subFilter.connect(musicState.bassGain);
-    musicState.bassGain.connect(musicState.masterGain); musicState.bassOsc.start();
+    // Compressor for punchy rock mix
+    const comp = audioCtx.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.knee.value = 6;
+    comp.ratio.value = 6; comp.attack.value = 0.003; comp.release.value = 0.12;
+    comp.connect(musicState.masterGain);
 
-    // === KICK DRUM - Four-on-the-floor driving beat ===
+    const distCurve = makeDistortion(30);
+
+    // Chord progression state - simple counter
+    let progBeat = 0; // counts bars
+    function getChord() { return PROGRESSION[progBeat % PROGRESSION.length]; }
+
+    // === SUB BASS ===
+    musicState.bassOsc = audioCtx.createOscillator();
+    musicState.bassOsc.type = 'sine'; musicState.bassOsc.frequency.value = 49.00; // G1
+    musicState.bassGain = audioCtx.createGain(); musicState.bassGain.gain.value = 0.18;
+    const subFilter = audioCtx.createBiquadFilter();
+    subFilter.type = 'lowpass'; subFilter.frequency.value = 70;
+    musicState.bassOsc.connect(subFilter); subFilter.connect(musicState.bassGain);
+    musicState.bassGain.connect(comp); musicState.bassOsc.start();
+
+    // === KICK + SNARE - Rock groove ===
     let kickBeat = 0;
     musicState.intervals.push(setInterval(() => {
         if (!audioCtx || !musicState.playing) return;
@@ -295,187 +318,143 @@ function startMusic() {
         const int = musicState.intensity;
         const beat = kickBeat % 4;
 
-        // Heavy kick on every beat - punchy and fast
-        const k = audioCtx.createOscillator(), kg = audioCtx.createGain();
-        k.type = 'sine';
-        k.frequency.setValueAtTime(150 + int * 30, now);
-        k.frequency.exponentialRampToValueAtTime(30, now + 0.12);
-        kg.gain.setValueAtTime(0.45 + int * 0.25, now);
-        kg.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-        k.connect(kg); kg.connect(musicState.masterGain); k.start(now); k.stop(now + 0.2);
-
-        // Click transient for punch
-        const cl = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.01, audioCtx.sampleRate);
-        const cd = cl.getChannelData(0);
-        for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.002));
-        const cs = audioCtx.createBufferSource(); cs.buffer = cl;
-        const cg = audioCtx.createGain(); cg.gain.value = 0.15 + int * 0.1;
-        cs.connect(cg); cg.connect(musicState.masterGain); cs.start(now);
-
-        // Snare on beats 1 and 3 (backbeat)
-        if (beat === 1 || beat === 3) {
-            const dur = 0.07;
-            const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
-            const d = buf.getChannelData(0);
-            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.02));
-            const s = audioCtx.createBufferSource(); s.buffer = buf;
-            const sg = audioCtx.createGain();
-            sg.gain.setValueAtTime(0.2 + int * 0.15, now);
-            sg.gain.exponentialRampToValueAtTime(0.001, now + dur);
-            // Snare body tone
-            const sn = audioCtx.createOscillator(); sn.type = 'triangle'; sn.frequency.value = 180;
-            const sng = audioCtx.createGain(); sng.gain.setValueAtTime(0.15, now);
-            sng.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-            s.connect(sg); sg.connect(musicState.masterGain); s.start(now);
-            sn.connect(sng); sng.connect(musicState.masterGain); sn.start(now); sn.stop(now + 0.06);
+        // Kick on 0 and 2
+        if (beat === 0 || beat === 2) {
+            const k = audioCtx.createOscillator(), kg = audioCtx.createGain();
+            k.type = 'sine';
+            k.frequency.setValueAtTime(150, now);
+            k.frequency.exponentialRampToValueAtTime(35, now + 0.12);
+            kg.gain.setValueAtTime(0.5 + int * 0.2, now);
+            kg.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+            k.connect(kg); kg.connect(comp); k.start(now); k.stop(now + 0.25);
         }
 
+        // Snare on 1 and 3
+        if (beat === 1 || beat === 3) {
+            const dur = 0.1;
+            const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.025));
+            const s = audioCtx.createBufferSource(); s.buffer = buf;
+            const sg = audioCtx.createGain();
+            sg.gain.setValueAtTime(0.25 + int * 0.15, now);
+            sg.gain.exponentialRampToValueAtTime(0.001, now + dur);
+            const sn = audioCtx.createOscillator(); sn.type = 'triangle'; sn.frequency.value = 200;
+            const sng = audioCtx.createGain(); sng.gain.setValueAtTime(0.2, now);
+            sng.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+            s.connect(sg); sg.connect(comp); s.start(now);
+            sn.connect(sng); sng.connect(comp); sn.start(now); sn.stop(now + 0.08);
+        }
         kickBeat++;
     }, BEAT_MS));
 
-    // === HI-HATS - Eighth note pulse for speed ===
-    let hhBeat = 0;
+    // === HI-HATS - Driving eighth notes ===
     musicState.intervals.push(setInterval(() => {
         if (!audioCtx || !musicState.playing) return;
         const now = audioCtx.currentTime;
         const int = musicState.intensity;
-        const isOpen = (hhBeat % 4 === 2); // open hat on off-beats
-
-        const dur = isOpen ? 0.08 : 0.025;
-        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.02, audioCtx.sampleRate);
         const d = buf.getChannelData(0);
-        const decay = isOpen ? 0.025 : 0.005;
-        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * decay));
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.004));
         const s = audioCtx.createBufferSource(); s.buffer = buf;
-        const sg = audioCtx.createGain();
-        sg.gain.setValueAtTime(isOpen ? 0.06 + int * 0.04 : 0.04 + int * 0.03, now);
-        const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
-        s.connect(hp); hp.connect(sg); sg.connect(musicState.masterGain); s.start(now);
-
-        hhBeat++;
+        const sg = audioCtx.createGain(); sg.gain.value = 0.04 + int * 0.03;
+        const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7500;
+        s.connect(hp); hp.connect(sg); sg.connect(comp); s.start(now);
     }, EIGHTH));
 
-    // === BASS RIFF - Driving eighth-note bass line ===
-    let riffIdx = 0, riffNote = 0;
-    let currentRiff = RIFF_PATTERNS[0];
+    // === RHYTHM GUITAR - Chunky power chord strum (Fortunate Son style) ===
+    // Only 2 oscillators per strum (root + fifth, single layer) for performance
+    let strumBeat = 0;
     musicState.intervals.push(setInterval(() => {
         if (!audioCtx || !musicState.playing) return;
         const now = audioCtx.currentTime;
         const int = musicState.intensity;
 
-        const freq = BASS_NOTES[currentRiff[riffNote]];
-        const dur = EIGHTH / 1000 * 0.85;
+        const barEighth = strumBeat % 8;
+        if (barEighth === 0 && strumBeat > 0) progBeat++;
+        const chord = CHORD_FREQS[getChord()];
+        const dur = EIGHTH / 1000 * 0.65;
 
-        // Distorted bass: sawtooth through waveshaper
+        // Strum accent pattern: strong-med-weak-strong-strong-weak-med-weak
+        const accents = [1, 0.7, 0.4, 0.9, 1, 0.4, 0.7, 0.4];
+        const vol = accents[barEighth];
+
+        // Two chord tones through distortion (root and fifth)
+        chord.forEach(freq => {
+            const o = audioCtx.createOscillator();
+            o.type = 'sawtooth'; o.frequency.value = freq * 2;
+            o.detune.value = (Math.random() - 0.5) * 10;
+            const dist = audioCtx.createWaveShaper();
+            dist.curve = distCurve; dist.oversample = '2x';
+            const drv = audioCtx.createGain(); drv.gain.value = 0.2 + int * 0.15;
+            const g = audioCtx.createGain();
+            g.gain.setValueAtTime(0.001, now);
+            g.gain.exponentialRampToValueAtTime((0.05 + int * 0.04) * vol, now + 0.005);
+            g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+            const lp = audioCtx.createBiquadFilter();
+            lp.type = 'lowpass'; lp.frequency.value = 1200 + int * 1800; lp.Q.value = 1.5;
+            o.connect(drv); drv.connect(dist); dist.connect(lp); lp.connect(g); g.connect(comp);
+            o.start(now); o.stop(now + dur + 0.01);
+        });
+
+        strumBeat++;
+    }, EIGHTH));
+
+    // === BASS GUITAR - Root note driving pattern ===
+    let bassBeat = 0;
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+
+        const root = CHORD_FREQS[getChord()][0];
+        const pos = bassBeat % 8;
+        // Play root on most beats, fifth on some for movement
+        const isRoot = [1,1,0,1,1,0,1,0][pos];
+        const freq = isRoot ? root : root * 1.5;
+        const dur = EIGHTH / 1000 * 0.75;
+
         const osc = audioCtx.createOscillator();
         osc.type = 'sawtooth'; osc.frequency.value = freq;
-        const oscGain = audioCtx.createGain();
-        oscGain.gain.setValueAtTime(0.001, now);
-        oscGain.gain.exponentialRampToValueAtTime(0.12 + int * 0.08, now + 0.01);
-        oscGain.gain.setValueAtTime(0.1 + int * 0.06, now + dur * 0.6);
-        oscGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
-        const lp = audioCtx.createBiquadFilter();
-        lp.type = 'lowpass'; lp.frequency.value = 400 + int * 600; lp.Q.value = 3;
-        osc.connect(lp); lp.connect(oscGain); oscGain.connect(musicState.masterGain);
-        osc.start(now); osc.stop(now + dur + 0.02);
-
-        riffNote++;
-        if (riffNote >= currentRiff.length) {
-            riffNote = 0;
-            if (int > 0.6) {
-                riffIdx = (riffIdx + 1) % RIFF_PATTERNS.length;
-            } else {
-                riffIdx = Math.floor(Math.random() * RIFF_PATTERNS.length);
-            }
-            currentRiff = RIFF_PATTERNS[riffIdx];
-        }
-    }, EIGHTH));
-
-    // === POWER STABS - Heroic chord hits on phrase starts ===
-    let stabBeat = 0;
-    musicState.intervals.push(setInterval(() => {
-        if (!audioCtx || !musicState.playing) return;
-        const now = audioCtx.currentTime;
-        const int = musicState.intensity;
-        if (int < 0.25) { stabBeat++; return; }
-
-        // Power chord stab every 8 beats (2 bars)
-        if (stabBeat % 8 === 0) {
-            const root = POWER_ROOTS[Math.floor(Math.random() * POWER_ROOTS.length)];
-            const fifth = root * 1.5;
-            const octave = root * 2;
-            const dur = BEAT_MS / 1000 * 2;
-
-            [root, fifth, octave].forEach((f, i) => {
-                const o = audioCtx.createOscillator();
-                o.type = i === 2 ? 'square' : 'sawtooth';
-                o.frequency.value = f;
-                const g = audioCtx.createGain();
-                g.gain.setValueAtTime(0.001, now);
-                g.gain.exponentialRampToValueAtTime(0.06 + int * 0.04, now + 0.02);
-                g.gain.setValueAtTime(0.04 + int * 0.03, now + dur * 0.5);
-                g.gain.exponentialRampToValueAtTime(0.001, now + dur);
-                const lp = audioCtx.createBiquadFilter();
-                lp.type = 'lowpass'; lp.frequency.value = 1200 + int * 800; lp.Q.value = 1;
-                o.connect(lp); lp.connect(g); g.connect(musicState.masterGain);
-                o.start(now); o.stop(now + dur + 0.05);
-            });
-        }
-
-        // Crash cymbal accent on power stab
-        if (stabBeat % 8 === 0 && int > 0.4) {
-            const dur = 0.3;
-            const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
-            const d = buf.getChannelData(0);
-            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.08));
-            const s = audioCtx.createBufferSource(); s.buffer = buf;
-            const sg = audioCtx.createGain(); sg.gain.setValueAtTime(0.08 + int * 0.06, now);
-            sg.gain.exponentialRampToValueAtTime(0.001, now + dur);
-            const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3000;
-            s.connect(hp); hp.connect(sg); sg.connect(musicState.masterGain); s.start(now);
-        }
-
-        stabBeat++;
-    }, BEAT_MS));
-
-    // === LEAD MELODY - Fast heroic lead runs ===
-    let leadBeat = 0, leadPhrase = 0;
-    const LEAD_PHRASES = [
-        [0,2,3,4,6,4,3,2],   // ascending run & back
-        [6,4,3,2,0,2,3,4],   // descending & rise
-        [0,3,0,4,0,3,0,6],   // rhythmic stabs
-        [4,4,3,3,2,2,0,0],   // doubling descent
-        [0,0,4,4,6,6,4,2],   // building power
-        [6,6,4,6,3,4,2,0],   // heroic call
-    ];
-    let currentLead = LEAD_PHRASES[0];
-    let leadNote = 0;
-    musicState.intervals.push(setInterval(() => {
-        if (!audioCtx || !musicState.playing) return;
-        const now = audioCtx.currentTime;
-        const int = musicState.intensity;
-        if (int < 0.4) { leadNote = 0; leadBeat++; return; }
-
-        // Play lead note
-        const freq = LEAD_NOTES[currentLead[leadNote]];
-        const dur = EIGHTH / 1000 * 0.7;
-
-        const o = audioCtx.createOscillator();
-        o.type = 'square'; o.frequency.value = freq;
-        // Slight pitch slide for expressiveness
-        o.frequency.setValueAtTime(freq * 1.02, now);
-        o.frequency.exponentialRampToValueAtTime(freq, now + 0.03);
-
         const g = audioCtx.createGain();
         g.gain.setValueAtTime(0.001, now);
-        g.gain.exponentialRampToValueAtTime(0.07 + int * 0.05, now + 0.01);
-        g.gain.setValueAtTime(0.05 + int * 0.04, now + dur * 0.5);
+        g.gain.exponentialRampToValueAtTime(0.12 + int * 0.06, now + 0.01);
         g.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
         const lp = audioCtx.createBiquadFilter();
-        lp.type = 'lowpass'; lp.frequency.value = 2000 + int * 2000; lp.Q.value = 2;
-        o.connect(lp); lp.connect(g); g.connect(musicState.masterGain);
+        lp.type = 'lowpass'; lp.frequency.value = 350 + int * 350; lp.Q.value = 2;
+        osc.connect(lp); lp.connect(g); g.connect(comp);
+        osc.start(now); osc.stop(now + dur + 0.02);
+
+        bassBeat++;
+    }, EIGHTH));
+
+    // === LEAD GUITAR - Melodic runs at high intensity ===
+    let leadPhrase = 0, leadNote = 0;
+    let currentLead = LEAD_PHRASES[0];
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+        if (int < 0.45) { leadNote = 0; return; }
+
+        const freq = LEAD_NOTES[currentLead[leadNote]];
+        const dur = EIGHTH / 1000 * 0.65;
+
+        // Single overdriven lead oscillator
+        const o = audioCtx.createOscillator();
+        o.type = 'sawtooth'; o.frequency.value = freq;
+        o.frequency.setValueAtTime(freq * 0.97, now);
+        o.frequency.exponentialRampToValueAtTime(freq, now + 0.04);
+        const dist = audioCtx.createWaveShaper();
+        dist.curve = distCurve; dist.oversample = '2x';
+        const drv = audioCtx.createGain(); drv.gain.value = 0.25 + int * 0.15;
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0.001, now);
+        g.gain.exponentialRampToValueAtTime(0.06 + int * 0.04, now + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        const lp = audioCtx.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = 2000 + int * 2500; lp.Q.value = 2;
+        o.connect(drv); drv.connect(dist); dist.connect(lp); lp.connect(g); g.connect(comp);
         o.start(now); o.stop(now + dur + 0.02);
 
         leadNote++;
@@ -484,44 +463,63 @@ function startMusic() {
             leadPhrase = (leadPhrase + 1) % LEAD_PHRASES.length;
             currentLead = LEAD_PHRASES[leadPhrase];
         }
-        leadBeat++;
     }, EIGHTH));
 
-    // === FILL - Tom roll before phrase restart ===
-    let fillCounter = 0;
+    // === CRASH CYMBAL - Every 4 bars ===
+    let crashCount = 0;
     musicState.intervals.push(setInterval(() => {
         if (!audioCtx || !musicState.playing) return;
         const now = audioCtx.currentTime;
         const int = musicState.intensity;
-        if (int < 0.5) { fillCounter++; return; }
-
-        // Tom fill every 16 beats (4 bars)
-        if (fillCounter % 16 === 15) {
-            const toms = [200, 160, 130, 100]; // high to low
-            toms.forEach((f, i) => {
-                const t = now + i * 0.07;
-                const tk = audioCtx.createOscillator(), tkg = audioCtx.createGain();
-                tk.type = 'sine'; tk.frequency.setValueAtTime(f, t);
-                tk.frequency.exponentialRampToValueAtTime(f * 0.5, t + 0.12);
-                tkg.gain.setValueAtTime(0.15 + int * 0.1, t);
-                tkg.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
-                tk.connect(tkg); tkg.connect(musicState.masterGain); tk.start(t); tk.stop(t + 0.16);
-            });
+        if (crashCount % 4 === 0 && int > 0.3) {
+            const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.35, audioCtx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.08));
+            const s = audioCtx.createBufferSource(); s.buffer = buf;
+            const sg = audioCtx.createGain(); sg.gain.setValueAtTime(0.07 + int * 0.05, now);
+            sg.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3000;
+            s.connect(hp); hp.connect(sg); sg.connect(comp); s.start(now);
         }
-        fillCounter++;
-    }, BEAT_MS));
+        crashCount++;
+    }, BEAT_MS * 4));
+
+    // === TOM FILLS - Every 8 bars ===
+    let fillCount = 0;
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+        if (int < 0.4 || fillCount % 8 !== 7) { fillCount++; return; }
+        const toms = [200, 160, 130, 100];
+        toms.forEach((f, i) => {
+            const t = now + i * 0.08;
+            const tk = audioCtx.createOscillator(), tkg = audioCtx.createGain();
+            tk.type = 'sine'; tk.frequency.setValueAtTime(f, t);
+            tk.frequency.exponentialRampToValueAtTime(f * 0.5, t + 0.15);
+            tkg.gain.setValueAtTime(0.16 + int * 0.1, t);
+            tkg.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+            tk.connect(tkg); tkg.connect(comp); tk.start(t); tk.stop(t + 0.2);
+        });
+        fillCount++;
+    }, BEAT_MS * 4));
 
     // === Intensity update ===
     musicState.intervals.push(setInterval(() => {
         if (!musicState.playing) return;
         if (typeof gameState !== 'undefined' && gameState.waveActive) {
-            musicState.intensityTarget = 0.5 + Math.min(gameState.wave / 12, 1.0) * 0.5;
+            musicState.intensityTarget = 0.5 + Math.min(gameState.wave / 10, 1.0) * 0.5;
         } else {
-            musicState.intensityTarget = 0.2; // steady beat between waves
+            musicState.intensityTarget = 0.3;
         }
         musicState.intensity += (musicState.intensityTarget - musicState.intensity) * 0.04;
         if (musicState.bassGain) {
-            musicState.bassGain.gain.setTargetAtTime(0.1 + musicState.intensity * 0.15, audioCtx.currentTime, 0.3);
+            musicState.bassGain.gain.setTargetAtTime(0.15 + musicState.intensity * 0.15, audioCtx.currentTime, 0.3);
+        }
+        // Sub bass follows chord root
+        if (musicState.bassOsc) {
+            const root = CHORD_FREQS[getChord()][0];
+            musicState.bassOsc.frequency.setTargetAtTime(root / 2, audioCtx.currentTime, 0.1);
         }
     }, 200));
 
@@ -561,7 +559,7 @@ const BASE_MAX_HP = 100;
 const ABILITY_COSTS = {
     airstrike: 75,
     landmine: 40,
-    supply: 100
+    supply: 1000
 };
 
 // ---- Zoom & Pan State ----
@@ -705,31 +703,31 @@ const TOWER_DEFS = {
         name: 'Sniper', cost: 1500, damage: 80, fireRate: 1.2, range: 240,
         color: '#5c6bc0', projectileColor: '#e0e0e0', projectileSpeed: 900,
         splash: 0, slow: 0, stun: 0, dot: 0, description: 'High damage, slow fire',
-        unlockHP: 3000, towerHP: 100  // Sniper: 3K
+        unlockHP: 3000, towerHP: 100
     },
     flamethrower: {
         name: 'Flamethrower', cost: 3500, damage: 15, fireRate: 0.2, range: 96,
         color: '#ff9800', projectileColor: '#ff6f00', projectileSpeed: 0,
         splash: 0, slow: 0, stun: 0, dot: 5, description: 'Continuous cone, DOT',
-        unlockHP: 16000, towerHP: 130
+        unlockHP: 16000, towerHP: 400
     },
     missile: {
         name: 'Missile Launcher', cost: 12000, damage: 40, fireRate: 1.4, range: 192,
         color: '#ef5350', projectileColor: '#ff5722', projectileSpeed: 400,
         splash: 50, slow: 0, stun: 0, dot: 0, description: 'Area splash damage',
-        unlockHP: 50000, towerHP: 140
+        unlockHP: 50000, towerHP: 500
     },
     emp: {
         name: 'EMP', cost: 30000, damage: 20, fireRate: 1.2, range: 156,
         color: '#29b6f6', projectileColor: '#03a9f4', projectileSpeed: 500,
         splash: 0, slow: 0, stun: 2.0, dot: 0, description: 'Stuns vehicles & bosses',
-        unlockHP: 100000, towerHP: 110
+        unlockHP: 100000, towerHP: 800
     },
     artillery: {
         name: 'Artillery', cost: 200000, damage: 120, fireRate: 2.5, range: 216,
         color: '#8d6e63', projectileColor: '#795548', projectileSpeed: 300,
         splash: 60, slow: 0, stun: 0, dot: 0, description: 'Heavy area damage',
-        unlockHP: 200000, towerHP: 160
+        unlockHP: 200000, towerHP: 1000
     }
 };
 
@@ -5539,19 +5537,26 @@ function showTutorialStep() {
     highlight.style.left = (rect.left - pad) + 'px'; highlight.style.top = (rect.top - pad) + 'px';
     highlight.style.width = (rect.width + pad * 2) + 'px'; highlight.style.height = (rect.height + pad * 2) + 'px';
     arrow.className = '';
-    const popupWidth = 340;
+    const popupWidth = 340, popupHeight = 200;
+    const clampX = (x) => Math.max(10, Math.min(x, window.innerWidth - popupWidth - 10));
+    const clampY = (y) => Math.max(10, Math.min(y, window.innerHeight - popupHeight - 10));
+    const cx = rect.left + rect.width / 2;
     if (step.arrowDir === 'down') {
-        popup.style.left = Math.max(10, Math.min(rect.left + rect.width / 2 - popupWidth / 2, window.innerWidth - popupWidth - 10)) + 'px';
-        popup.style.top = Math.max(10, rect.top - 210) + 'px'; popup.style.bottom = 'auto'; popup.style.right = 'auto';
-        arrow.classList.add('arrow-down'); arrow.style.left = (rect.left + rect.width / 2 - 12) + 'px'; arrow.style.top = (rect.top - pad - 18) + 'px'; arrow.style.bottom = 'auto'; arrow.style.right = 'auto';
+        popup.style.left = clampX(cx - popupWidth / 2) + 'px';
+        popup.style.top = clampY(rect.top - 210) + 'px'; popup.style.bottom = 'auto'; popup.style.right = 'auto';
+        arrow.classList.add('arrow-down'); arrow.style.left = (cx - 12) + 'px'; arrow.style.top = (rect.top - pad - 18) + 'px'; arrow.style.bottom = 'auto'; arrow.style.right = 'auto';
     } else {
-        popup.style.left = Math.max(10, Math.min(rect.left + rect.width / 2 - popupWidth / 2, window.innerWidth - popupWidth - 10)) + 'px';
-        popup.style.top = (rect.bottom + 30) + 'px'; popup.style.bottom = 'auto'; popup.style.right = 'auto';
-        arrow.classList.add('arrow-up'); arrow.style.left = (rect.left + rect.width / 2 - 12) + 'px'; arrow.style.top = (rect.bottom + pad + 2) + 'px'; arrow.style.bottom = 'auto'; arrow.style.right = 'auto';
+        let popTop = rect.bottom + 30;
+        // If popup would go off-screen, position it centered within the target instead
+        if (popTop + popupHeight > window.innerHeight) popTop = clampY(rect.top + rect.height / 2 - popupHeight / 2);
+        popup.style.left = clampX(cx - popupWidth / 2) + 'px';
+        popup.style.top = popTop + 'px'; popup.style.bottom = 'auto'; popup.style.right = 'auto';
+        arrow.classList.add('arrow-up'); arrow.style.left = (cx - 12) + 'px';
+        arrow.style.top = Math.min(rect.bottom + pad + 2, popTop - 18) + 'px'; arrow.style.bottom = 'auto'; arrow.style.right = 'auto';
     }
 }
-document.getElementById('tutorial-next-btn').addEventListener('click', () => { tutorialStep++; if (tutorialStep >= tutorialSteps.length) endTutorial(); else showTutorialStep(); });
-document.getElementById('tutorial-skip-btn').addEventListener('click', () => endTutorial());
+document.getElementById('tutorial-next-btn').addEventListener('click', (e) => { e.stopPropagation(); tutorialStep++; if (tutorialStep >= tutorialSteps.length) endTutorial(); else showTutorialStep(); });
+document.getElementById('tutorial-skip-btn').addEventListener('click', (e) => { e.stopPropagation(); endTutorial(); });
 window.addEventListener('resize', () => { if (tutorialActive) showTutorialStep(); });
 
 // ============================================================

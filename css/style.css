@@ -872,7 +872,7 @@ body {
 #save-notification.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* Tutorial Overlay */
-#tutorial-overlay { position: absolute; inset: 0; z-index: 50; pointer-events: none; }
+#tutorial-overlay { position: absolute; inset: 0; z-index: 50; pointer-events: auto; }
 #tutorial-overlay.hidden { display: none; }
 #tutorial-highlight {
     position: absolute; border: 2px solid #ffd700; border-radius: 8px;
