@@ -929,13 +929,6 @@ const RANKS = [
     { name: 'General',       hpReq: 100000, dmgMult: 2.0,  rateMult: 1.0, rangeMult: 1.15, hpMult: 2.0 }
 ];
 
-// ---- Division System ----
-const DIVISIONS = [
-    { name: 'Army',          cost: 0,    dmgMult: 1.0, rateMult: 1.0, rangeMult: 1.0 },
-    { name: 'Marine',        cost: 500,  dmgMult: 1.5, rateMult: 1.3, rangeMult: 1.2 },
-    { name: 'Special Forces', cost: 1500, dmgMult: 2.5, rateMult: 2.0, rangeMult: 1.5 },
-    { name: 'Delta Force',   cost: 4000, dmgMult: 4.0, rateMult: 3.0, rangeMult: 2.0 }
-];
 
 // ---- Enemy Definitions ----
 // canShoot: whether this enemy fires at towers
@@ -2994,13 +2987,7 @@ function getNextRank(tower) {
     return idx < RANKS.length - 1 ? RANKS[idx + 1] : null;
 }
 
-function getDivision(tower) {
-    return DIVISIONS[tower.divisionLevel];
-}
 
-function getNextDivision(tower) {
-    return tower.divisionLevel < DIVISIONS.length - 1 ? DIVISIONS[tower.divisionLevel + 1] : null;
-}
 
 function getEffectiveDamage(tower) {
     const def = TOWER_DEFS[tower.type];
@@ -4252,7 +4239,6 @@ function placeTower(col, row, type) {
         fireCooldown: 0,
         kills: 0,
         hpDestroyed: 0,
-        divisionLevel: 0,
         target: null,
         targetEnemy: null,
         fused: false,
@@ -4285,7 +4271,6 @@ function sellTower(tower) {
     updateTowerButtons();
 }
 
-// Division system removed - towers upgrade via rank only
 
 function findTarget(tower) {
     const p = gridCenter(tower.col, tower.row);
@@ -5421,9 +5406,6 @@ function updateTowerInfoPanel(tower) {
         document.getElementById('rank-progress-text').textContent = 'MAX RANK';
     }
 
-    // Hide division section
-    const divSection = document.getElementById('info-division-section');
-    if (divSection) divSection.style.display = 'none';
 
     // Stats
     document.getElementById('stat-damage').textContent = tower.type === 'slowdown' ? 'N/A' :
@@ -5587,7 +5569,7 @@ function saveGame() {
         towers: gameState.towers.map(t => ({
             type: t.type, col: t.col, row: t.row, hp: t.hp, maxHP: t.maxHP,
             kills: t.kills, hpDestroyed: t.hpDestroyed, soldierName: t.soldierName,
-            divisionLevel: t.divisionLevel, fused: t.fused, targetMode: t.targetMode,
+            fused: t.fused, targetMode: t.targetMode,
             fusionAbilityCooldown: t.fusionAbilityCooldown, fusionAbilityMaxCD: t.fusionAbilityMaxCD
         })),
         deadTowers: gameState.deadTowers.map(d => ({ type: d.type, soldierName: d.soldierName, rank: d.rank, kills: d.kills, hpDestroyed: d.hpDestroyed, wave: d.wave })),
@@ -5647,7 +5629,7 @@ function loadGame() {
         if (data.destroyedTiles) for (const dt of data.destroyedTiles) gameState.destroyedTiles.set(dt.key, { wave: dt.wave, recovery: dt.recovery });
         gameState.towers = data.towers.map(t => ({
             col: t.col, row: t.row, type: t.type, soldierName: t.soldierName, fireCooldown: 0,
-            kills: t.kills, hpDestroyed: t.hpDestroyed, divisionLevel: t.divisionLevel,
+            kills: t.kills, hpDestroyed: t.hpDestroyed,
             target: null, targetEnemy: null, fused: t.fused, targetMode: t.targetMode || 'first',
             fusionAbilityCooldown: t.fusionAbilityCooldown, fusionAbilityMaxCD: t.fusionAbilityMaxCD,
             abilityActive: false, abilityTimer: 0, hp: t.hp, maxHP: t.maxHP
