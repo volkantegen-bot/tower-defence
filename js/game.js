@@ -785,7 +785,7 @@ const FUSION_BONUSES = {
 // ---- Game State ----
 let gameState = {
     running: false,
-    money: 3000,
+    money: 5000,
     baseHP: BASE_MAX_HP,
     baseMaxHP: BASE_MAX_HP,
     wave: 0,
@@ -5598,7 +5598,7 @@ function startGame() {
     resetHeatMapData();
     gameState = {
         running: true,
-        money: 3000,
+        money: 5000,
         baseHP: BASE_MAX_HP,
         baseMaxHP: BASE_MAX_HP,
         wave: 0,
