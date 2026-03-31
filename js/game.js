@@ -508,30 +508,193 @@ function startMusic() {
         fillCount++;
     }, BEAT_MS * 4));
 
+    // === WAVE 6+ PHASE 2: SABATON POWER METAL LAYERS ===
+    // These layers only activate when wave >= 6
+
+    // G minor power chords for Phase 2 (Sabaton - Last Stand style)
+    const METAL_CHORDS = {
+        Gm: { root: 98.00, fifth: 146.83 },   // G2
+        Bb: { root: 116.54, fifth: 174.61 },   // Bb2
+        Eb: { root: 155.56, fifth: 233.08 },   // Eb3
+        F:  { root: 87.31, fifth: 130.81 },    // F2
+        Cm: { root: 130.81, fifth: 196.00 },   // C3
+    };
+    const METAL_PROG = ['Gm','Gm','Bb','Bb','Eb','Eb','F','F','Cm','Cm','Eb','Eb','F','F','Gm','Gm'];
+    let metalProgBeat = 0;
+    function getMetalChord() { return METAL_PROG[metalProgBeat % METAL_PROG.length]; }
+
+    // Waveshaper for distorted guitar
+    const distN = 44100, distCurve = new Float32Array(distN);
+    for (let i = 0; i < distN; i++) {
+        const x = (i * 2) / distN - 1;
+        distCurve[i] = ((3 + 30) * x * 20 * (Math.PI / 180)) / (Math.PI + 30 * Math.abs(x));
+    }
+
+    // Double-kick drum (16th notes) - Phase 2 only
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const wave = (typeof gameState !== 'undefined') ? gameState.wave : 0;
+        if (wave < 6) return;
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+        if (int < 0.4) return;
+
+        // Rapid double-kick
+        const k = audioCtx.createOscillator(), kg = audioCtx.createGain();
+        k.type = 'sine';
+        k.frequency.setValueAtTime(120, now);
+        k.frequency.exponentialRampToValueAtTime(40, now + 0.06);
+        kg.gain.setValueAtTime(0.25 + int * 0.15, now);
+        kg.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        k.connect(kg); kg.connect(comp);
+        k.start(now); k.stop(now + 0.1);
+    }, BEAT_MS / 4)); // 16th notes
+
+    // Aggressive snare backbeat (2 and 4) - Phase 2 replaces march pattern
+    let metalSnareBeat = 0;
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const wave = (typeof gameState !== 'undefined') ? gameState.wave : 0;
+        if (wave < 6) { metalSnareBeat++; return; }
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+        const beat = metalSnareBeat % 4;
+
+        // Heavy snare on 2 and 4
+        if (beat === 1 || beat === 3) {
+            const dur = 0.15;
+            const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.02));
+            const s = audioCtx.createBufferSource(); s.buffer = buf;
+            const sg = audioCtx.createGain();
+            sg.gain.setValueAtTime(0.4 + int * 0.2, now);
+            sg.gain.exponentialRampToValueAtTime(0.001, now + dur);
+            // Thick snare body
+            const sn = audioCtx.createOscillator(); sn.type = 'triangle'; sn.frequency.value = 200;
+            const sng = audioCtx.createGain(); sng.gain.setValueAtTime(0.25, now);
+            sng.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+            s.connect(sg); sg.connect(comp); s.start(now);
+            sn.connect(sng); sng.connect(comp); sn.start(now); sn.stop(now + 0.08);
+        }
+        metalSnareBeat++;
+    }, BEAT_MS));
+
+    // Power chord guitar chugging - Phase 2
+    let chugBeat = 0;
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const wave = (typeof gameState !== 'undefined') ? gameState.wave : 0;
+        if (wave < 6) { chugBeat++; return; }
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+
+        const barEighth = chugBeat % 8;
+        if (barEighth === 0 && chugBeat > 0) metalProgBeat++;
+        const chord = METAL_CHORDS[getMetalChord()];
+        const dur = HALF_BEAT / 1000 * 0.55;
+
+        // Palm-muted chugging accent pattern
+        const accents = [1, 0.5, 0.7, 0.5, 1, 0.5, 0.8, 0.4];
+        const vol = accents[barEighth];
+
+        // Root + fifth through distortion
+        [chord.root * 2, chord.fifth].forEach(freq => {
+            const o = audioCtx.createOscillator();
+            o.type = 'sawtooth'; o.frequency.value = freq;
+            o.detune.value = (Math.random() - 0.5) * 12;
+            const dist = audioCtx.createWaveShaper();
+            dist.curve = distCurve; dist.oversample = '2x';
+            const drv = audioCtx.createGain(); drv.gain.value = 0.15 + int * 0.1;
+            const g = audioCtx.createGain();
+            g.gain.setValueAtTime(0.001, now);
+            g.gain.exponentialRampToValueAtTime((0.04 + int * 0.03) * vol, now + 0.004);
+            g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+            const lp = audioCtx.createBiquadFilter();
+            lp.type = 'lowpass'; lp.frequency.value = 1000 + int * 1500; lp.Q.value = 1.2;
+            o.connect(drv); drv.connect(dist); dist.connect(lp); lp.connect(g); g.connect(comp);
+            o.start(now); o.stop(now + dur + 0.01);
+        });
+        chugBeat++;
+    }, HALF_BEAT));
+
+    // Driving hi-hats (eighth notes) - Phase 2
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const wave = (typeof gameState !== 'undefined') ? gameState.wave : 0;
+        if (wave < 6) return;
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+        if (int < 0.3) return;
+
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.025, audioCtx.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.005));
+        const s = audioCtx.createBufferSource(); s.buffer = buf;
+        const sg = audioCtx.createGain(); sg.gain.value = 0.05 + int * 0.04;
+        const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 8000;
+        s.connect(hp); hp.connect(sg); sg.connect(comp); s.start(now);
+    }, HALF_BEAT));
+
+    // Metal bass guitar - Phase 2 (follows power chord roots)
+    let metalBassBeat = 0;
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const wave = (typeof gameState !== 'undefined') ? gameState.wave : 0;
+        if (wave < 6) { metalBassBeat++; return; }
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+
+        const chord = METAL_CHORDS[getMetalChord()];
+        const pos = metalBassBeat % 8;
+        const freq = [1,1,0,1,1,0,1,0][pos] ? chord.root : chord.root * 1.5;
+        const dur = HALF_BEAT / 1000 * 0.7;
+
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sawtooth'; osc.frequency.value = freq;
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0.001, now);
+        g.gain.exponentialRampToValueAtTime(0.1 + int * 0.05, now + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        const lp = audioCtx.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = 400 + int * 400; lp.Q.value = 1.5;
+        osc.connect(lp); lp.connect(g); g.connect(comp);
+        osc.start(now); osc.stop(now + dur + 0.02);
+        metalBassBeat++;
+    }, HALF_BEAT));
+
     // === Intensity & chord update ===
     musicState.intervals.push(setInterval(() => {
         if (!musicState.playing) return;
+        const wave = (typeof gameState !== 'undefined') ? gameState.wave : 0;
+        const isPhase2 = wave >= 6;
+
         if (typeof gameState !== 'undefined' && gameState.waveActive) {
-            musicState.intensityTarget = 0.5 + Math.min(gameState.wave / 10, 1.0) * 0.5;
+            musicState.intensityTarget = isPhase2
+                ? 0.6 + Math.min(gameState.wave / 15, 1.0) * 0.4
+                : 0.5 + Math.min(gameState.wave / 10, 1.0) * 0.5;
         } else {
-            musicState.intensityTarget = 0.2;
+            musicState.intensityTarget = isPhase2 ? 0.35 : 0.2;
         }
         musicState.intensity += (musicState.intensityTarget - musicState.intensity) * 0.03;
         const int = musicState.intensity;
 
-        // Sub bass follows chord root
+        // Sub bass follows chord root (Phase 1 = Iron chords, Phase 2 = metal chords)
         if (musicState.bassGain) {
             musicState.bassGain.gain.setTargetAtTime(0.15 + int * 0.15, audioCtx.currentTime, 0.3);
         }
         if (musicState.bassOsc) {
-            const root = IRON_CHORDS[getChord()].root;
+            const root = isPhase2
+                ? METAL_CHORDS[getMetalChord()].root
+                : IRON_CHORDS[getChord()].root;
             musicState.bassOsc.frequency.setTargetAtTime(root / 2, audioCtx.currentTime, 0.2);
         }
 
         // String pads follow chord and intensity
-        const chord = IRON_CHORDS[getChord()];
-        const chordNotes = [chord.root, chord.fifth, chord.third];
-        const stringVol = int > 0.2 ? 0.02 + int * 0.025 : 0;
+        const chord = isPhase2 ? METAL_CHORDS[getMetalChord()] : IRON_CHORDS[getChord()];
+        const chordNotes = [chord.root, chord.fifth, chord.fifth * 0.75];
+        // Strings quieter in Phase 2 (guitar takes over)
+        const stringVol = int > 0.2 ? (isPhase2 ? 0.01 + int * 0.015 : 0.02 + int * 0.025) : 0;
         for (let i = 0; i < 3; i++) {
             if (stringOscs[i]) stringOscs[i].frequency.setTargetAtTime(chordNotes[i], audioCtx.currentTime, 0.3);
             if (stringGains[i]) stringGains[i].gain.setTargetAtTime(stringVol, audioCtx.currentTime, 0.4);
@@ -785,7 +948,7 @@ const ENEMY_DEFS = {
                 canShoot: true, shootRange: 75, shootDamage: 6, shootRate: 1.8 },
     tank:     { name: 'Tank',     baseHP: 2500, speed: 15, baseDmg: 60, rankXP: 10, color: '#ef9a9a', size: 12,
                 canShoot: true, shootRange: 95, shootDamage: 15, shootRate: 2.8 },
-    enemyArt: { name: 'Enemy Artillery', baseHP: 1200, speed: 10, baseDmg: 25, rankXP: 8, color: '#ff6e40', size: 14,
+    enemyArt: { name: 'Enemy Artillery', baseHP: 600, speed: 10, baseDmg: 25, rankXP: 8, color: '#ff6e40', size: 14,
                 canShoot: true, shootRange: 85, shootDamage: 5, shootRate: 4.5, isArtillery: true },
     runner:   { name: 'Runner', baseHP: 30, speed: 45, baseDmg: 5, rankXP: 1, color: '#81d4fa', size: 5,
                 canShoot: false, shootRange: 0, shootDamage: 0, shootRate: 999 },
