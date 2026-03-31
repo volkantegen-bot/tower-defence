@@ -411,11 +411,13 @@ const TOWER_DEFS = {
 
 // ---- Rank System ----
 const RANKS = [
-    { name: 'Private',  hpReq: 0,     dmgMult: 1.0,  rateMult: 1.0, rangeMult: 1.0, hpMult: 1.0 },
-    { name: 'Corporal', hpReq: 500,   dmgMult: 1.15, rateMult: 1.0, rangeMult: 1.0, hpMult: 1.15 },
-    { name: 'Sergeant', hpReq: 2000,  dmgMult: 1.3,  rateMult: 1.0, rangeMult: 1.0, hpMult: 1.3 },
-    { name: 'Captain',  hpReq: 8000,  dmgMult: 1.5,  rateMult: 1.0, rangeMult: 1.0, hpMult: 1.5 },
-    { name: 'General',  hpReq: 25000, dmgMult: 1.8,  rateMult: 1.0, rangeMult: 1.0, hpMult: 1.8 }
+    { name: 'Private',       hpReq: 0,      dmgMult: 1.0,  rateMult: 1.0, rangeMult: 1.0,  hpMult: 1.0 },
+    { name: 'Corporal',      hpReq: 500,    dmgMult: 1.12, rateMult: 1.0, rangeMult: 1.0,  hpMult: 1.1 },
+    { name: 'Sergeant',      hpReq: 2000,   dmgMult: 1.25, rateMult: 1.0, rangeMult: 1.05, hpMult: 1.2 },
+    { name: 'Lieutenant',    hpReq: 6000,   dmgMult: 1.4,  rateMult: 1.0, rangeMult: 1.05, hpMult: 1.35 },
+    { name: 'Captain',       hpReq: 15000,  dmgMult: 1.55, rateMult: 1.0, rangeMult: 1.1,  hpMult: 1.5 },
+    { name: 'Colonel',       hpReq: 40000,  dmgMult: 1.75, rateMult: 1.0, rangeMult: 1.1,  hpMult: 1.7 },
+    { name: 'General',       hpReq: 100000, dmgMult: 2.0,  rateMult: 1.0, rangeMult: 1.15, hpMult: 2.0 }
 ];
 
 // ---- Division System ----
@@ -496,7 +498,8 @@ let gameState = {
     blastTiles: [], // {col, row} tiles blasted open by enemy artillery
     destroyedTiles: new Map(), // tile key -> wave when destroyed
     repairVehicle: null, // active repair vehicle
-    repairSelectMode: false // player selecting tile to repair
+    repairSelectMode: false, // player selecting tile to repair
+    deadTowers: [] // fallen soldiers memorial
 };
 
 function initGrid() {
@@ -1405,6 +1408,21 @@ function drawTowers() {
             ctx.globalAlpha = 1;
         }
 
+        // === NAME LABEL (when selected) ===
+        if (gameState.selectedTower === tower && tower.soldierName) {
+            const rank = getRank(tower);
+            const nameText = `${rank.name} ${tower.soldierName}`;
+            ctx.font = 'bold 9px Arial';
+            ctx.textAlign = 'center';
+            // Background
+            const tw = ctx.measureText(nameText).width + 6;
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(p.x - tw / 2, p.y - bodyH - 16, tw, 12);
+            // Text
+            ctx.fillStyle = '#ffd54f';
+            ctx.fillText(nameText, p.x, p.y - bodyH - 7);
+        }
+
         // === TOWER HP BAR (only when damaged) ===
         if (tower.hp < tower.maxHP) {
             const hpRatio = tower.hp / tower.maxHP;
@@ -2290,9 +2308,44 @@ function drawIsoRangeEllipse(cx, cy, range, fillStyle, strokeStyle, lineWidth, l
     }
 }
 
+// Military name generator
+const MILITARY_FIRST_NAMES = [
+    'James', 'John', 'Robert', 'William', 'David', 'Richard', 'Michael', 'Thomas',
+    'Daniel', 'Joseph', 'Charles', 'Samuel', 'George', 'Edward', 'Henry', 'Frank',
+    'Jack', 'Oscar', 'Victor', 'Max', 'Karl', 'Hans', 'Ivan', 'Sergei',
+    'Marcus', 'Leon', 'Rex', 'Duke', 'Cole', 'Hank', 'Wade', 'Clay',
+    'Ace', 'Hawk', 'Wolf', 'Knox', 'Nash', 'Axel', 'Blaze', 'Cruz',
+    'Flint', 'Grant', 'Chase', 'Stone', 'Colt', 'Brock', 'Reed', 'Wyatt'
+];
+const MILITARY_LAST_NAMES = [
+    'Johnson', 'Williams', 'Brown', 'Miller', 'Davis', 'Wilson', 'Anderson', 'Taylor',
+    'Jackson', 'Harris', 'Thompson', 'Walker', 'Baker', 'Carter', 'Mitchell', 'Roberts',
+    'Turner', 'Cooper', 'Morgan', 'Hunter', 'Parker', 'Collins', 'Edwards', 'Stewart',
+    'Sullivan', 'Murphy', 'Fletcher', 'Armstrong', 'Reynolds', 'Crawford', 'Hawkins', 'Barrett',
+    'Steele', 'Blackwood', 'Ironside', 'Stonefield', 'Graves', 'Frost', 'Storm', 'Wolfe',
+    'Shepherd', 'Ramsey', 'Garrison', 'Briggs', 'Mercer', 'Conway', 'Lawson', 'Donovan'
+];
+const MILITARY_CALLSIGNS = [
+    'Viper', 'Ghost', 'Reaper', 'Falcon', 'Thunder', 'Shadow', 'Maverick', 'Phoenix',
+    'Cobra', 'Eagle', 'Titan', 'Sentinel', 'Fury', 'Bulldog', 'Hammer', 'Raptor',
+    'Razor', 'Gunner', 'Spartan', 'Viking', 'Ronin', 'Jaguar', 'Havoc', 'Spectre'
+];
+
+function generateMilitaryName() {
+    const first = MILITARY_FIRST_NAMES[Math.floor(Math.random() * MILITARY_FIRST_NAMES.length)];
+    const last = MILITARY_LAST_NAMES[Math.floor(Math.random() * MILITARY_LAST_NAMES.length)];
+    // 30% chance to get a callsign
+    if (Math.random() < 0.3) {
+        const callsign = MILITARY_CALLSIGNS[Math.floor(Math.random() * MILITARY_CALLSIGNS.length)];
+        return `${first} "${callsign}" ${last}`;
+    }
+    return `${first} ${last}`;
+}
+
 function getCombinedTitle(tower) {
     const rank = getRank(tower);
-    return rank.name;
+    const name = tower.soldierName || 'Unknown';
+    return `${rank.name} ${name}`;
 }
 
 // ============================================================
@@ -2544,6 +2597,16 @@ function destroyTower(tower) {
             size: 4
         });
     }
+
+    // Save to fallen soldiers memorial
+    gameState.deadTowers.push({
+        type: tower.type,
+        soldierName: tower.soldierName || 'Unknown',
+        rank: getRank(tower),
+        kills: tower.kills || 0,
+        hpDestroyed: tower.hpDestroyed || 0,
+        wave: gameState.wave
+    });
 
     gameState.towers = gameState.towers.filter(t => t !== tower);
     if (gameState.selectedTower === tower) {
@@ -3302,6 +3365,7 @@ function placeTower(col, row, type) {
 
     const tower = {
         col, row, type,
+        soldierName: generateMilitaryName(),
         fireCooldown: 0,
         kills: 0,
         hpDestroyed: 0,
@@ -3700,6 +3764,74 @@ function updateMoneyDisplay() {
     document.getElementById('money-amount').textContent = gameState.money;
 }
 
+function updateTowerRoster() {
+    const roster = document.getElementById('tower-roster');
+    if (!roster) return;
+    if (gameState.towers.length === 0 && gameState.deadTowers.length === 0) {
+        roster.innerHTML = '';
+        return;
+    }
+
+    let html = '<div class="roster-title">🎖 UNIT ROSTER</div>';
+    // Sort by rank (highest first), then by HP destroyed
+    const sortedTowers = [...gameState.towers].sort((a, b) => {
+        const rankA = RANKS.indexOf(getRank(a));
+        const rankB = RANKS.indexOf(getRank(b));
+        if (rankB !== rankA) return rankB - rankA;
+        return (b.hpDestroyed || 0) - (a.hpDestroyed || 0);
+    });
+    for (const tower of sortedTowers) {
+        const def = TOWER_DEFS[tower.type];
+        const rank = getRank(tower);
+        const hpPct = Math.ceil(tower.hp / tower.maxHP * 100);
+        const hpColor = hpPct > 50 ? '#4caf50' : hpPct > 25 ? '#ff9800' : '#f44336';
+        const isSelected = gameState.selectedTower === tower;
+        const name = tower.soldierName || 'Unknown';
+        // Short rank abbreviation
+        const rankAbbr = { 'Private': 'Pvt', 'Corporal': 'Cpl', 'Sergeant': 'Sgt', 'Lieutenant': 'Lt', 'Captain': 'Cpt', 'Colonel': 'Col', 'General': 'Gen' }[rank.name] || rank.name;
+
+        html += `<div class="roster-entry${isSelected ? ' selected' : ''}" data-tower-col="${tower.col}" data-tower-row="${tower.row}">`;
+        html += `<div class="roster-icon" style="background:${def.color}"></div>`;
+        html += `<div class="roster-rank">${rankAbbr}</div>`;
+        html += `<div class="roster-name">${name}</div>`;
+        html += `<div class="roster-hp" style="color:${hpColor}">${hpPct}%</div>`;
+        html += `</div>`;
+    }
+
+    // Dead towers - fallen soldiers at bottom
+    if (gameState.deadTowers.length > 0) {
+        html += '<div class="roster-divider">✝ FALLEN</div>';
+        for (const dead of gameState.deadTowers) {
+            const def = TOWER_DEFS[dead.type];
+            const rankAbbr = { 'Private': 'Pvt', 'Corporal': 'Cpl', 'Sergeant': 'Sgt', 'Lieutenant': 'Lt', 'Captain': 'Cpt', 'Colonel': 'Col', 'General': 'Gen' }[dead.rank.name] || dead.rank.name;
+            html += `<div class="roster-entry dead">`;
+            html += `<div class="roster-icon" style="background:#555"></div>`;
+            html += `<div class="roster-rank">${rankAbbr}</div>`;
+            html += `<div class="roster-name">${dead.soldierName}</div>`;
+            html += `<div class="roster-hp" style="color:#666">KIA</div>`;
+            html += `</div>`;
+        }
+    }
+
+    roster.innerHTML = html;
+
+    // Click handlers
+    roster.querySelectorAll('.roster-entry').forEach(entry => {
+        entry.addEventListener('click', () => {
+            const col = parseInt(entry.dataset.towerCol);
+            const row = parseInt(entry.dataset.towerRow);
+            const tower = gameState.towers.find(t => t.col === col && t.row === row);
+            if (tower) {
+                gameState.selectedTower = tower;
+                gameState.selectedTowerType = null;
+                document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+                updateTowerInfoPanel(tower);
+                updateTowerRoster();
+            }
+        });
+    });
+}
+
 function updateCPDisplay() {
     document.getElementById('cp-amount').textContent = gameState.commandPoints;
     // Update ability button states
@@ -3796,8 +3928,7 @@ function updateTowerInfoPanel(tower) {
 
     const fusionName = tower.fused ? FUSION_BONUSES[tower.type].name : def.name;
     document.getElementById('info-title').textContent = fusionName;
-    document.getElementById('info-combined-title').textContent =
-        getCombinedTitle(tower) + ' ' + fusionName;
+    document.getElementById('info-combined-title').textContent = getCombinedTitle(tower);
 
     // Rank progress
     document.getElementById('info-rank-label').textContent = `Rank: ${rank.name}`;
@@ -3909,6 +4040,7 @@ function update(dt) {
     updateTowerButtons();
     updateMoneyDisplay();
     updateCPDisplay();
+    updateTowerRoster();
 }
 
 function render() {
@@ -3994,7 +4126,8 @@ function startGame() {
         blastTiles: [],
         destroyedTiles: new Map(),
         repairVehicle: null,
-        repairSelectMode: false
+        repairSelectMode: false,
+        deadTowers: []
     };
     // Reset pathSet to original BEFORE initGrid so blasted tiles are cleared
     pathSet.clear();
@@ -4446,6 +4579,443 @@ function drawRepairVehicle() {
         ctx.beginPath(); ctx.arc(x, y - 8, 2, 0, Math.PI * 2); ctx.fill();
     }
 }
+
+// ============================================================
+// START SCREEN - Heroic Battlefield Canvas
+// ============================================================
+(function drawStartScreen() {
+    const sc = document.getElementById('startCanvas');
+    if (!sc) return;
+    const sctx = sc.getContext('2d');
+    sc.width = window.innerWidth;
+    sc.height = window.innerHeight;
+    const W = sc.width, H = sc.height;
+
+    // Sky gradient - dramatic fiery sunset
+    const skyGrad = sctx.createLinearGradient(0, 0, 0, H * 0.55);
+    skyGrad.addColorStop(0, '#0c0c2a');
+    skyGrad.addColorStop(0.25, '#1e0e3a');
+    skyGrad.addColorStop(0.45, '#4a1525');
+    skyGrad.addColorStop(0.65, '#8b3020');
+    skyGrad.addColorStop(0.85, '#d46010');
+    skyGrad.addColorStop(1, '#ff8800');
+    sctx.fillStyle = skyGrad;
+    sctx.fillRect(0, 0, W, H * 0.55);
+
+    // Distant mountains - silhouette against bright sky
+    sctx.fillStyle = '#2a1828';
+    sctx.beginPath();
+    sctx.moveTo(0, H * 0.45);
+    for (let x = 0; x <= W; x += 3) {
+        const y = H * 0.45 - Math.sin(x * 0.003) * 40 - Math.sin(x * 0.007 + 1) * 25 - Math.sin(x * 0.015 + 2) * 12;
+        sctx.lineTo(x, y);
+    }
+    sctx.lineTo(W, H * 0.55);
+    sctx.lineTo(0, H * 0.55);
+    sctx.fill();
+
+    // Horizon glow - intense fire on horizon
+    const horizonGlow = sctx.createRadialGradient(W * 0.5, H * 0.52, 0, W * 0.5, H * 0.52, W * 0.55);
+    horizonGlow.addColorStop(0, 'rgba(255, 130, 20, 0.5)');
+    horizonGlow.addColorStop(0.5, 'rgba(255, 80, 0, 0.2)');
+    horizonGlow.addColorStop(1, 'rgba(255, 50, 0, 0)');
+    sctx.fillStyle = horizonGlow;
+    sctx.fillRect(0, H * 0.35, W, H * 0.25);
+
+    // Ground - battlefield lit by fires
+    const groundGrad = sctx.createLinearGradient(0, H * 0.55, 0, H);
+    groundGrad.addColorStop(0, '#3a3018');
+    groundGrad.addColorStop(0.3, '#2a2210');
+    groundGrad.addColorStop(1, '#12100a');
+    sctx.fillStyle = groundGrad;
+    sctx.fillRect(0, H * 0.55, W, H * 0.45);
+
+    // Ground texture - dirt patches
+    for (let i = 0; i < 60; i++) {
+        const gx = Math.random() * W;
+        const gy = H * 0.58 + Math.random() * H * 0.4;
+        const gr = 5 + Math.random() * 20;
+        sctx.fillStyle = `rgba(${30 + Math.random()*20}, ${25 + Math.random()*15}, ${10 + Math.random()*10}, ${0.2 + Math.random()*0.3})`;
+        sctx.beginPath();
+        sctx.ellipse(gx, gy, gr, gr * 0.4, Math.random() * Math.PI, 0, Math.PI * 2);
+        sctx.fill();
+    }
+
+    // Trenches / lines in ground
+    for (let i = 0; i < 5; i++) {
+        const ty = H * 0.65 + i * H * 0.06;
+        sctx.strokeStyle = `rgba(15, 12, 5, ${0.4 + i * 0.1})`;
+        sctx.lineWidth = 2;
+        sctx.beginPath();
+        sctx.moveTo(0, ty);
+        for (let x = 0; x <= W; x += 5) {
+            sctx.lineTo(x, ty + Math.sin(x * 0.01 + i) * 3);
+        }
+        sctx.stroke();
+    }
+
+    // Helper: draw isometric tank
+    function drawTank(x, y, scale, facing, color) {
+        sctx.save();
+        sctx.translate(x, y);
+        const s = scale;
+        const dx = facing, dy = facing * 0.5;
+        const px = -dy, py = dx * 0.5;
+
+        // Shadow
+        sctx.fillStyle = 'rgba(0,0,0,0.3)';
+        sctx.beginPath();
+        sctx.ellipse(0, 4 * s, 20 * s, 8 * s, 0, 0, Math.PI * 2);
+        sctx.fill();
+
+        // Tracks
+        sctx.fillStyle = '#1a1a1a';
+        sctx.beginPath();
+        sctx.moveTo((-18*dx - 8*px)*s, (-18*dy - 8*py)*s);
+        sctx.lineTo((18*dx - 8*px)*s, (18*dy - 8*py)*s);
+        sctx.lineTo((18*dx - 4*px)*s, (18*dy - 4*py)*s);
+        sctx.lineTo((-18*dx - 4*px)*s, (-18*dy - 4*py)*s);
+        sctx.fill();
+        sctx.beginPath();
+        sctx.moveTo((-18*dx + 8*px)*s, (-18*dy + 8*py)*s);
+        sctx.lineTo((18*dx + 8*px)*s, (18*dy + 8*py)*s);
+        sctx.lineTo((18*dx + 4*px)*s, (18*dy + 4*py)*s);
+        sctx.lineTo((-18*dx + 4*px)*s, (-18*dy + 4*py)*s);
+        sctx.fill();
+
+        // Hull
+        const hullColor = color || '#3a5a30';
+        sctx.fillStyle = hullColor;
+        sctx.beginPath();
+        sctx.moveTo((-14*dx - 6*px)*s, (-14*dy - 6*py - 6)*s);
+        sctx.lineTo((14*dx - 6*px)*s, (14*dy - 6*py - 6)*s);
+        sctx.lineTo((14*dx + 6*px)*s, (14*dy + 6*py - 6)*s);
+        sctx.lineTo((-14*dx + 6*px)*s, (-14*dy + 6*py - 6)*s);
+        sctx.fill();
+
+        // Hull top highlight
+        sctx.fillStyle = 'rgba(255,255,255,0.08)';
+        sctx.fill();
+
+        // Turret
+        sctx.fillStyle = '#2a4a22';
+        sctx.beginPath();
+        sctx.ellipse(0, -8 * s, 7 * s, 5 * s, 0, 0, Math.PI * 2);
+        sctx.fill();
+
+        // Gun barrel
+        sctx.strokeStyle = '#1a1a1a';
+        sctx.lineWidth = 3 * s;
+        sctx.beginPath();
+        sctx.moveTo(0, -8 * s);
+        sctx.lineTo(dx * 22 * s, (dy * 22 - 8) * s);
+        sctx.stroke();
+
+        // Muzzle brake
+        sctx.strokeStyle = '#2a2a2a';
+        sctx.lineWidth = 4 * s;
+        sctx.beginPath();
+        sctx.moveTo(dx * 20 * s, (dy * 20 - 8) * s);
+        sctx.lineTo(dx * 24 * s, (dy * 24 - 8) * s);
+        sctx.stroke();
+
+        sctx.restore();
+    }
+
+    // Helper: draw soldier silhouette
+    function drawSoldier(x, y, scale, facing, variant) {
+        sctx.save();
+        sctx.translate(x, y);
+        const s = scale;
+
+        // Shadow
+        sctx.fillStyle = 'rgba(0,0,0,0.25)';
+        sctx.beginPath();
+        sctx.ellipse(0, 2 * s, 5 * s, 2 * s, 0, 0, Math.PI * 2);
+        sctx.fill();
+
+        // Legs
+        sctx.strokeStyle = '#1a2a1a';
+        sctx.lineWidth = 2 * s;
+        const legOff = variant === 1 ? 2 : -1;
+        sctx.beginPath();
+        sctx.moveTo(-1 * s, -2 * s);
+        sctx.lineTo((-2 + legOff * facing) * s, 2 * s);
+        sctx.stroke();
+        sctx.beginPath();
+        sctx.moveTo(1 * s, -2 * s);
+        sctx.lineTo((2 - legOff * facing) * s, 2 * s);
+        sctx.stroke();
+
+        // Body
+        sctx.fillStyle = '#3a5a2a';
+        sctx.fillRect(-3 * s, -8 * s, 6 * s, 7 * s);
+
+        // Head / helmet
+        sctx.fillStyle = '#4a6a38';
+        sctx.beginPath();
+        sctx.arc(0, -10 * s, 3 * s, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.fillStyle = '#3a5a2a';
+        sctx.fillRect(-3.5 * s, -11 * s, 7 * s, 2 * s);
+
+        // Rifle
+        sctx.strokeStyle = '#1a1a1a';
+        sctx.lineWidth = 1.5 * s;
+        sctx.beginPath();
+        sctx.moveTo(facing * 2 * s, -6 * s);
+        sctx.lineTo(facing * 10 * s, -4 * s);
+        sctx.stroke();
+
+        sctx.restore();
+    }
+
+    // Helper: draw artillery piece
+    function drawArtillery(x, y, scale, facing) {
+        sctx.save();
+        sctx.translate(x, y);
+        const s = scale;
+
+        // Shadow
+        sctx.fillStyle = 'rgba(0,0,0,0.3)';
+        sctx.beginPath();
+        sctx.ellipse(0, 3 * s, 18 * s, 6 * s, 0, 0, Math.PI * 2);
+        sctx.fill();
+
+        // Wheels
+        sctx.fillStyle = '#1a1a1a';
+        sctx.beginPath(); sctx.arc(-8 * s, 0, 4 * s, 0, Math.PI * 2); sctx.fill();
+        sctx.beginPath(); sctx.arc(8 * s, 0, 4 * s, 0, Math.PI * 2); sctx.fill();
+
+        // Trail (ground support)
+        sctx.strokeStyle = '#2a2a1a';
+        sctx.lineWidth = 3 * s;
+        sctx.beginPath();
+        sctx.moveTo(-facing * 18 * s, 2 * s);
+        sctx.lineTo(0, -2 * s);
+        sctx.stroke();
+
+        // Gun shield
+        sctx.fillStyle = '#3a4a2a';
+        sctx.fillRect(-5 * s, -10 * s, 10 * s, 8 * s);
+
+        // Barrel
+        sctx.strokeStyle = '#2a2a1a';
+        sctx.lineWidth = 4 * s;
+        sctx.beginPath();
+        sctx.moveTo(0, -8 * s);
+        sctx.lineTo(facing * 26 * s, -14 * s);
+        sctx.stroke();
+
+        // Muzzle brake
+        sctx.strokeStyle = '#3a3a2a';
+        sctx.lineWidth = 6 * s;
+        sctx.beginPath();
+        sctx.moveTo(facing * 24 * s, -13.5 * s);
+        sctx.lineTo(facing * 28 * s, -15 * s);
+        sctx.stroke();
+
+        sctx.restore();
+    }
+
+    // Helper: draw explosion
+    function drawExplosion(x, y, scale) {
+        sctx.save();
+        sctx.translate(x, y);
+        const s = scale;
+
+        // Outer glow
+        const grad = sctx.createRadialGradient(0, 0, 0, 0, 0, 35 * s);
+        grad.addColorStop(0, 'rgba(255, 230, 80, 0.9)');
+        grad.addColorStop(0.3, 'rgba(255, 150, 20, 0.6)');
+        grad.addColorStop(0.6, 'rgba(255, 70, 0, 0.3)');
+        grad.addColorStop(1, 'rgba(150, 30, 0, 0)');
+        sctx.fillStyle = grad;
+        sctx.beginPath();
+        sctx.arc(0, 0, 30 * s, 0, Math.PI * 2);
+        sctx.fill();
+
+        // Core
+        sctx.fillStyle = 'rgba(255, 255, 200, 0.8)';
+        sctx.beginPath();
+        sctx.arc(0, -2 * s, 6 * s, 0, Math.PI * 2);
+        sctx.fill();
+
+        // Sparks
+        for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2 + 0.3;
+            const r = 10 + Math.random() * 15;
+            sctx.fillStyle = `rgba(255, ${150 + Math.random()*100|0}, 0, ${0.5 + Math.random()*0.4})`;
+            sctx.beginPath();
+            sctx.arc(Math.cos(angle) * r * s, Math.sin(angle) * r * s - 2 * s, (1 + Math.random() * 2) * s, 0, Math.PI * 2);
+            sctx.fill();
+        }
+
+        sctx.restore();
+    }
+
+    // Helper: smoke column
+    function drawSmoke(x, y, scale) {
+        for (let i = 0; i < 6; i++) {
+            const sy = y - i * 12 * scale;
+            const r = (4 + i * 3) * scale;
+            const alpha = 0.15 - i * 0.02;
+            sctx.fillStyle = `rgba(40, 40, 40, ${Math.max(0, alpha)})`;
+            sctx.beginPath();
+            sctx.arc(x + Math.sin(i * 1.2) * 4 * scale, sy, r, 0, Math.PI * 2);
+            sctx.fill();
+        }
+    }
+
+    // Helper: barbed wire
+    function drawBarbedWire(x, y, len) {
+        sctx.strokeStyle = 'rgba(60, 60, 50, 0.5)';
+        sctx.lineWidth = 1;
+        sctx.beginPath();
+        for (let i = 0; i <= len; i += 4) {
+            const wy = y + Math.sin(i * 0.8) * 3;
+            sctx.lineTo(x + i, wy);
+        }
+        sctx.stroke();
+        // Barbs
+        for (let i = 0; i < len; i += 8) {
+            sctx.strokeStyle = 'rgba(80, 80, 60, 0.4)';
+            sctx.beginPath();
+            sctx.moveTo(x + i, y + Math.sin(i * 0.8) * 3);
+            sctx.lineTo(x + i + 2, y + Math.sin(i * 0.8) * 3 - 4);
+            sctx.stroke();
+        }
+    }
+
+    // ---- SCENE COMPOSITION ----
+
+    // Barbed wire in foreground
+    drawBarbedWire(W * 0.05, H * 0.72, W * 0.25);
+    drawBarbedWire(W * 0.65, H * 0.78, W * 0.3);
+
+    // Far background tanks (small, silhouette against fire)
+    drawTank(W * 0.15, H * 0.56, 0.5, 1, '#2a3828');
+    drawTank(W * 0.35, H * 0.54, 0.45, 1, '#283220');
+    drawTank(W * 0.82, H * 0.55, 0.48, -1, '#2a2820');
+
+    // Mid-ground explosions and smoke
+    drawExplosion(W * 0.45, H * 0.52, 1.2);
+    drawExplosion(W * 0.72, H * 0.48, 0.8);
+    drawSmoke(W * 0.48, H * 0.50, 1.0);
+    drawSmoke(W * 0.25, H * 0.53, 0.7);
+    drawSmoke(W * 0.78, H * 0.52, 0.8);
+
+    // Mid-ground soldiers advancing (left side)
+    drawSoldier(W * 0.08, H * 0.62, 1.2, 1, 0);
+    drawSoldier(W * 0.12, H * 0.64, 1.3, 1, 1);
+    drawSoldier(W * 0.16, H * 0.63, 1.1, 1, 0);
+    drawSoldier(W * 0.20, H * 0.65, 1.25, 1, 1);
+    drawSoldier(W * 0.06, H * 0.66, 1.15, 1, 0);
+
+    // Mid-ground soldiers (right side, facing left - enemy)
+    drawSoldier(W * 0.85, H * 0.61, 1.1, -1, 0);
+    drawSoldier(W * 0.88, H * 0.63, 1.2, -1, 1);
+    drawSoldier(W * 0.92, H * 0.62, 1.15, -1, 0);
+
+    // Main tanks (prominent, foreground)
+    drawTank(W * 0.28, H * 0.70, 1.6, 1, '#4a6a38');
+    drawTank(W * 0.62, H * 0.72, 1.7, -1, '#5a4a32');
+
+    // Muzzle flash on right tank
+    sctx.save();
+    const mfx = W * 0.62 - 24 * 1.5, mfy = H * 0.72 - 8 * 1.5;
+    const mfGrad = sctx.createRadialGradient(mfx, mfy, 0, mfx, mfy, 18);
+    mfGrad.addColorStop(0, 'rgba(255, 255, 200, 0.9)');
+    mfGrad.addColorStop(0.5, 'rgba(255, 150, 0, 0.4)');
+    mfGrad.addColorStop(1, 'rgba(255, 100, 0, 0)');
+    sctx.fillStyle = mfGrad;
+    sctx.beginPath();
+    sctx.arc(mfx, mfy, 18, 0, Math.PI * 2);
+    sctx.fill();
+    sctx.restore();
+
+    // Artillery pieces
+    drawArtillery(W * 0.10, H * 0.76, 1.3, 1);
+    drawArtillery(W * 0.88, H * 0.80, 1.2, -1);
+
+    // Foreground soldiers (larger, silhouette feel)
+    drawSoldier(W * 0.30, H * 0.78, 1.8, 1, 0);
+    drawSoldier(W * 0.35, H * 0.80, 2.0, 1, 1);
+    drawSoldier(W * 0.70, H * 0.79, 1.9, -1, 0);
+
+    // Foreground explosion - big and bright
+    drawExplosion(W * 0.50, H * 0.68, 2.2);
+    drawSmoke(W * 0.52, H * 0.65, 1.6);
+    drawExplosion(W * 0.38, H * 0.60, 1.3);
+
+    // Sandbag bunker (left foreground)
+    sctx.fillStyle = '#3a3520';
+    for (let i = 0; i < 4; i++) {
+        sctx.beginPath();
+        sctx.ellipse(W * 0.04 + i * 12, H * 0.85, 8, 5, 0, 0, Math.PI * 2);
+        sctx.fill();
+    }
+    for (let i = 0; i < 3; i++) {
+        sctx.beginPath();
+        sctx.ellipse(W * 0.046 + i * 12, H * 0.85 - 8, 8, 5, 0, 0, Math.PI * 2);
+        sctx.fill();
+    }
+
+    // Distant fire/burning - larger and brighter
+    for (let i = 0; i < 5; i++) {
+        const fx = W * (0.15 + i * 0.17);
+        const fy = H * 0.53;
+        const frad = 12 + Math.random() * 8;
+        const fgrad = sctx.createRadialGradient(fx, fy, 0, fx, fy, frad);
+        fgrad.addColorStop(0, 'rgba(255, 200, 50, 0.7)');
+        fgrad.addColorStop(0.5, 'rgba(255, 100, 0, 0.3)');
+        fgrad.addColorStop(1, 'rgba(255, 60, 0, 0)');
+        sctx.fillStyle = fgrad;
+        sctx.beginPath();
+        sctx.arc(fx, fy, frad, 0, Math.PI * 2);
+        sctx.fill();
+    }
+
+    // Stars in dark sky
+    for (let i = 0; i < 40; i++) {
+        const sx = Math.random() * W;
+        const sy = Math.random() * H * 0.3;
+        const sr = 0.5 + Math.random() * 1;
+        sctx.fillStyle = `rgba(255, 255, 255, ${0.2 + Math.random() * 0.5})`;
+        sctx.beginPath();
+        sctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        sctx.fill();
+    }
+
+    // Fog of war overlay at bottom
+    const fogGrad = sctx.createLinearGradient(0, H * 0.85, 0, H);
+    fogGrad.addColorStop(0, 'rgba(10, 10, 15, 0)');
+    fogGrad.addColorStop(1, 'rgba(10, 10, 15, 0.8)');
+    sctx.fillStyle = fogGrad;
+    sctx.fillRect(0, H * 0.85, W, H * 0.15);
+
+    // Atmospheric haze
+    const hazeGrad = sctx.createLinearGradient(0, H * 0.5, 0, H * 0.6);
+    hazeGrad.addColorStop(0, 'rgba(80, 40, 10, 0.12)');
+    hazeGrad.addColorStop(1, 'rgba(80, 40, 10, 0)');
+    sctx.fillStyle = hazeGrad;
+    sctx.fillRect(0, H * 0.5, W, H * 0.1);
+
+    // Vignette overlay - subtle
+    const vignette = sctx.createRadialGradient(W/2, H/2, W * 0.3, W/2, H/2, W * 0.75);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.35)');
+    sctx.fillStyle = vignette;
+    sctx.fillRect(0, 0, W, H);
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+        const ss = document.getElementById('start-screen');
+        if (ss && !ss.classList.contains('hidden')) {
+            drawStartScreen();
+        }
+    });
+})();
 
 // Start / Restart
 document.getElementById('start-btn').addEventListener('click', () => {

@@ -10,6 +10,9 @@
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
 
+        <!-- Tower Roster (left side) -->
+        <div id="tower-roster"></div>
+
         <!-- HUD -->
         <div id="hud">
             <div id="hud-left">
@@ -143,13 +146,20 @@
 
         <!-- Start Screen -->
         <div id="start-screen">
+            <canvas id="startCanvas"></canvas>
             <div id="start-content">
+                <div id="start-emblem">★</div>
                 <h1>TOWER DEFENSE</h1>
-                <h2>Military Warfare Edition</h2>
-                <p>Place towers to defend your base against endless waves of enemies.</p>
-                <p>Every 5th wave brings a powerful boss!</p>
-                <p style="color:#ffd700; margin-top:10px; font-size:12px;">NEW: Commander Abilities | Tower Fusion | Enemy Surrender</p>
-                <button id="start-btn">START GAME</button>
+                <h2>MILITARY WARFARE EDITION</h2>
+                <div id="start-divider"></div>
+                <div id="start-features">
+                    <div class="start-feature">⚔ Strategic Tower Placement</div>
+                    <div class="start-feature">🎖 Rank Up Your Soldiers</div>
+                    <div class="start-feature">💥 Commander Abilities</div>
+                    <div class="start-feature">🏳 Enemy Surrender System</div>
+                </div>
+                <button id="start-btn">DEPLOY FORCES</button>
+                <div id="start-hint">Defend your base against endless waves of enemy forces</div>
             </div>
         </div>
     </div>

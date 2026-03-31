@@ -344,6 +344,104 @@ body {
     margin-top: 2px;
 }
 
+/* Tower Roster Panel */
+#tower-roster {
+    position: fixed;
+    top: 55px;
+    left: 5px;
+    width: 180px;
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+    background: rgba(15, 15, 30, 0.55);
+    border: 1px solid rgba(80, 80, 80, 0.4);
+    border-radius: 8px;
+    padding: 6px;
+    z-index: 15;
+    backdrop-filter: blur(3px);
+    font-size: 11px;
+    pointer-events: auto;
+}
+
+#tower-roster:empty {
+    display: none;
+}
+
+#tower-roster .roster-title {
+    color: #ffd54f;
+    font-weight: bold;
+    font-size: 11px;
+    text-align: center;
+    padding: 2px 0 4px;
+    border-bottom: 1px solid rgba(255,213,79,0.3);
+    margin-bottom: 4px;
+}
+
+#tower-roster .roster-entry {
+    display: flex;
+    align-items: center;
+    padding: 3px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    gap: 5px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+#tower-roster .roster-entry:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+#tower-roster .roster-entry.selected {
+    background: rgba(255,213,79,0.15);
+    border: 1px solid rgba(255,213,79,0.3);
+}
+
+#tower-roster .roster-icon {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+#tower-roster .roster-name {
+    color: #ccc;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+}
+
+#tower-roster .roster-rank {
+    color: #ffd54f;
+    font-size: 9px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+#tower-roster .roster-hp {
+    font-size: 9px;
+    flex-shrink: 0;
+}
+
+#tower-roster .roster-divider {
+    font-size: 9px;
+    color: #888;
+    text-align: center;
+    padding: 4px 0 2px;
+    margin-top: 4px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    letter-spacing: 2px;
+}
+
+#tower-roster .roster-entry.dead {
+    opacity: 0.45;
+}
+
+#tower-roster .roster-entry.dead .roster-name {
+    text-decoration: line-through;
+    color: #888;
+}
+
 /* Tower Info Panel */
 #tower-info {
     position: fixed;
@@ -600,8 +698,16 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0,0,0,0.85);
     z-index: 100;
+    overflow: hidden;
+}
+
+#startCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
 }
 
 #start-screen.hidden {
@@ -610,26 +716,65 @@ body {
 
 #start-content {
     text-align: center;
+    z-index: 1;
+    position: relative;
+    padding: 40px 60px;
+    background: rgba(10, 10, 25, 0.65);
+    border: 2px solid rgba(255, 215, 0, 0.3);
+    border-radius: 16px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(255, 215, 0, 0.1) inset;
+}
+
+#start-emblem {
+    font-size: 48px;
+    color: #ffd700;
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+    margin-bottom: 5px;
 }
 
 #start-content h1 {
-    font-size: 52px;
+    font-size: 48px;
     color: #ffd700;
-    text-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
-    letter-spacing: 6px;
-    margin-bottom: 8px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.8), 0 0 30px rgba(255, 215, 0, 0.3);
+    letter-spacing: 8px;
+    margin-bottom: 4px;
+    font-family: 'Impact', 'Arial Black', sans-serif;
 }
 
 #start-content h2 {
-    font-size: 20px;
-    color: #aaa;
-    letter-spacing: 4px;
-    margin-bottom: 30px;
+    font-size: 16px;
+    color: #c0a040;
+    letter-spacing: 6px;
+    margin-bottom: 20px;
     font-weight: normal;
+    text-transform: uppercase;
 }
 
-#start-content p {
-    font-size: 14px;
-    color: #888;
-    margin-bottom: 6px;
+#start-divider {
+    width: 200px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #ffd700, transparent);
+    margin: 0 auto 20px;
+}
+
+#start-features {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 20px;
+    margin-bottom: 25px;
+}
+
+.start-feature {
+    font-size: 13px;
+    color: #bbb;
+    text-align: left;
+    padding: 4px 0;
+}
+
+#start-hint {
+    font-size: 12px;
+    color: #666;
+    margin-top: 15px;
+    letter-spacing: 1px;
 }
