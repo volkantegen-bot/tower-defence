@@ -2972,7 +2972,7 @@ function spawnEnemy(type, isBoss, waveNum, extraData) {
         slowTimer: 0,
         slowAmount: 0,
         stunTimer: 0,
-        money: Math.ceil(def.baseHP * 0.08),
+        money: Math.ceil(def.baseHP * 0.16),
         surrenderChecked: false,
         // Shooting stats
         canShoot: def.canShoot || false,
