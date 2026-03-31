@@ -268,17 +268,6 @@ const IRON_CHORDS = {
 // Progression: Ab - Db - Eb - Ab | Fm - Db - Eb - Ab (8 bars, verse/chorus)
 const IRON_PROG = ['Ab','Ab','Db','Db','Eb','Eb','Ab','Ab','Fm','Fm','Db','Db','Eb','Eb','Ab','Ab'];
 
-// Brass fanfare melody notes (Ab major scale) - heroic horn lines
-const HORN_NOTES = [207.65, 233.08, 261.63, 277.18, 311.13, 349.23, 392.00, 415.30]; // Ab3 scale up
-const HORN_PHRASES = [
-    [0,2,4,4,2,4,5,4],   // Rising fanfare
-    [4,4,2,0,0,2,4,2],   // Descending resolve
-    [0,0,4,5,7,5,4,2],   // Heroic leap
-    [7,5,4,2,4,2,0,0],   // Triumphant descent
-    [2,4,5,4,2,0,2,4],   // March forward
-    [4,5,7,7,5,4,2,0],   // Victory call
-];
-
 // String pad frequencies for sustained harmonics
 const STRING_NOTES = [103.83, 138.59, 155.56, 174.61, 207.65]; // Ab2-Ab3
 
@@ -453,86 +442,11 @@ function startMusic() {
         timpBeat++;
     }, BEAT_MS * 2));
 
-    // === BRASS FANFARE - French horn style melody ===
-    let hornPhrase = 0, hornNote = 0;
-    let currentHorn = HORN_PHRASES[0];
+    // === CHORD PROGRESSION DRIVER ===
     musicState.intervals.push(setInterval(() => {
         if (!audioCtx || !musicState.playing) return;
-        const now = audioCtx.currentTime;
-        const int = musicState.intensity;
-        if (int < 0.35) { hornNote = 0; return; }
-
-        const freq = HORN_NOTES[currentHorn[hornNote]];
-        const dur = BEAT_MS / 1000 * 0.85;
-
-        // French horn = filtered sawtooth, warm and bold
-        const o1 = audioCtx.createOscillator();
-        o1.type = 'sawtooth'; o1.frequency.value = freq;
-        const o2 = audioCtx.createOscillator();
-        o2.type = 'sawtooth'; o2.frequency.value = freq * 1.002; // slight detune for warmth
-
-        const hornGain = audioCtx.createGain();
-        // Brass attack envelope - slower than guitar, builds up
-        hornGain.gain.setValueAtTime(0.001, now);
-        hornGain.gain.linearRampToValueAtTime((0.06 + int * 0.05), now + 0.06);
-        hornGain.gain.setValueAtTime((0.06 + int * 0.05), now + dur * 0.7);
-        hornGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
-        // Warm brass filter
-        const brassFilter = audioCtx.createBiquadFilter();
-        brassFilter.type = 'lowpass';
-        brassFilter.frequency.value = 800 + int * 1200;
-        brassFilter.Q.value = 1.2;
-
-        o1.connect(hornGain); o2.connect(hornGain);
-        hornGain.connect(brassFilter);
-        brassFilter.connect(comp); brassFilter.connect(reverbSend);
-        o1.start(now); o1.stop(now + dur + 0.02);
-        o2.start(now); o2.stop(now + dur + 0.02);
-
-        hornNote++;
-        if (hornNote >= currentHorn.length) {
-            hornNote = 0;
-            hornPhrase = (hornPhrase + 1) % HORN_PHRASES.length;
-            currentHorn = HORN_PHRASES[hornPhrase];
-        }
-    }, BEAT_MS));
-
-    // === BRASS POWER CHORDS - Sustained horn section stabs ===
-    let brassBeat = 0;
-    musicState.intervals.push(setInterval(() => {
-        if (!audioCtx || !musicState.playing) return;
-        const now = audioCtx.currentTime;
-        const int = musicState.intensity;
-        if (int < 0.5) { brassBeat++; return; }
-
-        if (brassBeat % 2 === 0) {
-            progBeat++;
-        }
-
-        // Play sustained power chord every 2 bars at high intensity
-        if (brassBeat % 4 === 0) {
-            const chord = IRON_CHORDS[getChord()];
-            const notes = [chord.root * 2, chord.fifth, chord.third];
-            const dur = BEAT_MS * 2 / 1000;
-
-            notes.forEach((freq, idx) => {
-                const o = audioCtx.createOscillator();
-                o.type = 'sawtooth'; o.frequency.value = freq;
-                o.detune.value = (idx - 1) * 6; // slight spread
-                const g = audioCtx.createGain();
-                g.gain.setValueAtTime(0.001, now);
-                g.gain.linearRampToValueAtTime(0.04 + int * 0.03, now + 0.08);
-                g.gain.setValueAtTime(0.04 + int * 0.03, now + dur * 0.6);
-                g.gain.exponentialRampToValueAtTime(0.001, now + dur);
-                const lp = audioCtx.createBiquadFilter();
-                lp.type = 'lowpass'; lp.frequency.value = 600 + int * 800; lp.Q.value = 0.8;
-                o.connect(lp); lp.connect(g); g.connect(comp); g.connect(reverbSend);
-                o.start(now); o.stop(now + dur + 0.05);
-            });
-        }
-        brassBeat++;
-    }, BEAT_MS * 2));
+        progBeat++;
+    }, BEAT_MS * 4));
 
     // === STRING PADS - Lush sustained harmony ===
     // Continuous string drone that follows chord changes
