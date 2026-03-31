@@ -242,238 +242,286 @@ function playSoundThrottled(type, minInterval = 0.05, volume = 0.15) {
     playSound(type, volume);
 }
 
-// ---- Background Music System - Ottoman Mehter March Style ----
+// ---- Background Music System - Heroic Fast-Paced Action ----
 let musicState = {
     playing: false, muted: false, masterGain: null,
-    droneOsc: null, droneGain: null, droneOsc2: null,
-    intervals: [], // all setIntervals stored here
+    bassOsc: null, bassGain: null,
+    intervals: [],
     intensityTarget: 0.0, intensity: 0.0
 };
-const MUSIC_VOLUME = 0.12;
+const MUSIC_VOLUME = 0.14;
+const BPM = 150; // Fast, driving tempo
+const BEAT_MS = 60000 / BPM; // ~400ms per beat at 150 BPM
+const EIGHTH = BEAT_MS / 2; // eighth note
 
-// Hicaz makam scale (Ottoman/Turkish) - the heroic military scale
-// Root = D: D Eb F# G A Bb C# D (in various octaves)
-const HICAZ_LOW  = [146.83, 155.56, 185.00, 196.00, 220.00, 233.08, 277.18, 293.66]; // D3-D4
-const HICAZ_HIGH = [293.66, 311.13, 369.99, 392.00, 440.00, 466.16, 554.37, 587.33]; // D4-D5
-// Heroic march melody phrases (indices into HICAZ scale, each phrase = sequence of notes)
-const MARCH_PHRASES = [
-    [0, 3, 4, 3, 2, 1, 0],        // D G A G F# Eb D - classic descent
-    [0, 2, 3, 4, 7],               // D F# G A D' - ascending heroic
-    [7, 6, 4, 3, 2, 0],            // D' C# A G F# D - triumphant descent
-    [4, 3, 4, 5, 4, 3, 2, 0],     // A G A Bb A G F# D - ornamental
-    [0, 0, 3, 3, 4, 4, 7],         // D D G G A A D' - march rhythm
-    [7, 7, 4, 4, 3, 2, 1, 0],     // D' D' A A G F# Eb D - battle call
-    [0, 2, 4, 7, 4, 2, 0],        // D F# A D' A F# D - arpeggio
-    [3, 4, 5, 4, 3, 2, 3, 0],     // G A Bb A G F# G D - Turkish ornament
+// E minor pentatonic - powerful, heroic, universally epic
+const BASS_NOTES = [82.41, 98.00, 110.00, 123.47, 146.83, 164.81]; // E2-E3
+const LEAD_NOTES = [329.63, 392.00, 440.00, 493.88, 587.33, 659.26, 783.99]; // E4-E5+
+// Power chord roots for stabs
+const POWER_ROOTS = [82.41, 110.00, 123.47, 146.83]; // E, A, B, D
+
+// Driving riff patterns (index into BASS_NOTES)
+const RIFF_PATTERNS = [
+    [0,0,2,2,3,3,2,0],     // E-E-A-A-B-B-A-E (classic power riff)
+    [0,0,0,2,3,5,3,2],     // E-E-E-A-B-E'-B-A (ascending burst)
+    [5,3,2,0,0,2,3,5],     // E'-B-A-E-E-A-B-E' (heroic arc)
+    [0,2,0,3,0,2,0,5],     // syncopated drive
+    [0,0,3,3,5,5,3,0],     // building power
+    [3,3,2,2,0,0,2,3],     // descending intensity
 ];
-const BEAT_MS = 300; // ~100 BPM marching tempo
 
 function startMusic() {
     if (!audioCtx || musicState.playing) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
-    // Master gain
     musicState.masterGain = audioCtx.createGain();
     musicState.masterGain.gain.value = musicState.muted ? 0 : MUSIC_VOLUME;
     musicState.masterGain.connect(audioCtx.destination);
 
-    // === DRONE (Boru/horn-like sustained note on D) ===
-    musicState.droneOsc = audioCtx.createOscillator();
-    musicState.droneOsc.type = 'sawtooth'; musicState.droneOsc.frequency.value = 73.42; // D2
-    musicState.droneGain = audioCtx.createGain(); musicState.droneGain.gain.value = 0.12;
-    const droneFilter = audioCtx.createBiquadFilter();
-    droneFilter.type = 'lowpass'; droneFilter.frequency.value = 200; droneFilter.Q.value = 2;
-    musicState.droneOsc.connect(droneFilter); droneFilter.connect(musicState.droneGain);
-    musicState.droneGain.connect(musicState.masterGain); musicState.droneOsc.start();
-    // Second drone a 5th up (A) for power
-    musicState.droneOsc2 = audioCtx.createOscillator();
-    musicState.droneOsc2.type = 'triangle'; musicState.droneOsc2.frequency.value = 110; // A2
-    const droneGain2 = audioCtx.createGain(); droneGain2.gain.value = 0.06;
-    const droneFilter2 = audioCtx.createBiquadFilter();
-    droneFilter2.type = 'lowpass'; droneFilter2.frequency.value = 250; droneFilter2.Q.value = 1;
-    musicState.droneOsc2.connect(droneFilter2); droneFilter2.connect(droneGain2);
-    droneGain2.connect(musicState.masterGain); musicState.droneOsc2.start();
+    // === SUB BASS - Constant low E for weight ===
+    musicState.bassOsc = audioCtx.createOscillator();
+    musicState.bassOsc.type = 'sine'; musicState.bassOsc.frequency.value = 41.2; // E1
+    musicState.bassGain = audioCtx.createGain(); musicState.bassGain.gain.value = 0.15;
+    const subFilter = audioCtx.createBiquadFilter();
+    subFilter.type = 'lowpass'; subFilter.frequency.value = 80;
+    musicState.bassOsc.connect(subFilter); subFilter.connect(musicState.bassGain);
+    musicState.bassGain.connect(musicState.masterGain); musicState.bassOsc.start();
 
-    // === DAVUL (Large bass drum) - Strong marching beat ===
-    let davulBeat = 0;
+    // === KICK DRUM - Four-on-the-floor driving beat ===
+    let kickBeat = 0;
     musicState.intervals.push(setInterval(() => {
         if (!audioCtx || !musicState.playing) return;
         const now = audioCtx.currentTime;
         const int = musicState.intensity;
-        const beat = davulBeat % 8;
+        const beat = kickBeat % 4;
 
-        // DAVUL: Strong hit on beats 0, 4 (DUM) - lighter on 2, 6 (TEK)
-        if (beat === 0 || beat === 4) {
-            // Heavy davul DUM
-            const k = audioCtx.createOscillator(), kg = audioCtx.createGain();
-            k.type = 'sine';
-            k.frequency.setValueAtTime(90, now);
-            k.frequency.exponentialRampToValueAtTime(35, now + 0.2);
-            kg.gain.setValueAtTime(0.5 + int * 0.3, now);
-            kg.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-            k.connect(kg); kg.connect(musicState.masterGain); k.start(now); k.stop(now + 0.35);
-            // Add noise layer for davul skin slap
-            const dur = 0.06;
+        // Heavy kick on every beat - punchy and fast
+        const k = audioCtx.createOscillator(), kg = audioCtx.createGain();
+        k.type = 'sine';
+        k.frequency.setValueAtTime(150 + int * 30, now);
+        k.frequency.exponentialRampToValueAtTime(30, now + 0.12);
+        kg.gain.setValueAtTime(0.45 + int * 0.25, now);
+        kg.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        k.connect(kg); kg.connect(musicState.masterGain); k.start(now); k.stop(now + 0.2);
+
+        // Click transient for punch
+        const cl = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.01, audioCtx.sampleRate);
+        const cd = cl.getChannelData(0);
+        for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.002));
+        const cs = audioCtx.createBufferSource(); cs.buffer = cl;
+        const cg = audioCtx.createGain(); cg.gain.value = 0.15 + int * 0.1;
+        cs.connect(cg); cg.connect(musicState.masterGain); cs.start(now);
+
+        // Snare on beats 1 and 3 (backbeat)
+        if (beat === 1 || beat === 3) {
+            const dur = 0.07;
             const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
             const d = buf.getChannelData(0);
-            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.015));
+            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.02));
             const s = audioCtx.createBufferSource(); s.buffer = buf;
-            const sg = audioCtx.createGain(); sg.gain.setValueAtTime(0.2 + int * 0.15, now);
+            const sg = audioCtx.createGain();
+            sg.gain.setValueAtTime(0.2 + int * 0.15, now);
             sg.gain.exponentialRampToValueAtTime(0.001, now + dur);
-            const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 400;
-            s.connect(lp); lp.connect(sg); sg.connect(musicState.masterGain); s.start(now);
-        }
-        if (beat === 2 || beat === 6) {
-            // Lighter TEK (higher pitch, shorter)
-            const k = audioCtx.createOscillator(), kg = audioCtx.createGain();
-            k.type = 'sine';
-            k.frequency.setValueAtTime(120, now);
-            k.frequency.exponentialRampToValueAtTime(60, now + 0.1);
-            kg.gain.setValueAtTime(0.25 + int * 0.15, now);
-            kg.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-            k.connect(kg); kg.connect(musicState.masterGain); k.start(now); k.stop(now + 0.15);
+            // Snare body tone
+            const sn = audioCtx.createOscillator(); sn.type = 'triangle'; sn.frequency.value = 180;
+            const sng = audioCtx.createGain(); sng.gain.setValueAtTime(0.15, now);
+            sng.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            s.connect(sg); sg.connect(musicState.masterGain); s.start(now);
+            sn.connect(sng); sng.connect(musicState.masterGain); sn.start(now); sn.stop(now + 0.06);
         }
 
-        // ZIL (Cymbals) - crash on beat 0 of every bar, tick on others when intense
-        if (beat === 0) {
-            const dur = 0.15;
+        kickBeat++;
+    }, BEAT_MS));
+
+    // === HI-HATS - Eighth note pulse for speed ===
+    let hhBeat = 0;
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+        const isOpen = (hhBeat % 4 === 2); // open hat on off-beats
+
+        const dur = isOpen ? 0.08 : 0.025;
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+        const d = buf.getChannelData(0);
+        const decay = isOpen ? 0.025 : 0.005;
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * decay));
+        const s = audioCtx.createBufferSource(); s.buffer = buf;
+        const sg = audioCtx.createGain();
+        sg.gain.setValueAtTime(isOpen ? 0.06 + int * 0.04 : 0.04 + int * 0.03, now);
+        const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
+        s.connect(hp); hp.connect(sg); sg.connect(musicState.masterGain); s.start(now);
+
+        hhBeat++;
+    }, EIGHTH));
+
+    // === BASS RIFF - Driving eighth-note bass line ===
+    let riffIdx = 0, riffNote = 0;
+    let currentRiff = RIFF_PATTERNS[0];
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+
+        const freq = BASS_NOTES[currentRiff[riffNote]];
+        const dur = EIGHTH / 1000 * 0.85;
+
+        // Distorted bass: sawtooth through waveshaper
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sawtooth'; osc.frequency.value = freq;
+        const oscGain = audioCtx.createGain();
+        oscGain.gain.setValueAtTime(0.001, now);
+        oscGain.gain.exponentialRampToValueAtTime(0.12 + int * 0.08, now + 0.01);
+        oscGain.gain.setValueAtTime(0.1 + int * 0.06, now + dur * 0.6);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+        const lp = audioCtx.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = 400 + int * 600; lp.Q.value = 3;
+        osc.connect(lp); lp.connect(oscGain); oscGain.connect(musicState.masterGain);
+        osc.start(now); osc.stop(now + dur + 0.02);
+
+        riffNote++;
+        if (riffNote >= currentRiff.length) {
+            riffNote = 0;
+            if (int > 0.6) {
+                riffIdx = (riffIdx + 1) % RIFF_PATTERNS.length;
+            } else {
+                riffIdx = Math.floor(Math.random() * RIFF_PATTERNS.length);
+            }
+            currentRiff = RIFF_PATTERNS[riffIdx];
+        }
+    }, EIGHTH));
+
+    // === POWER STABS - Heroic chord hits on phrase starts ===
+    let stabBeat = 0;
+    musicState.intervals.push(setInterval(() => {
+        if (!audioCtx || !musicState.playing) return;
+        const now = audioCtx.currentTime;
+        const int = musicState.intensity;
+        if (int < 0.25) { stabBeat++; return; }
+
+        // Power chord stab every 8 beats (2 bars)
+        if (stabBeat % 8 === 0) {
+            const root = POWER_ROOTS[Math.floor(Math.random() * POWER_ROOTS.length)];
+            const fifth = root * 1.5;
+            const octave = root * 2;
+            const dur = BEAT_MS / 1000 * 2;
+
+            [root, fifth, octave].forEach((f, i) => {
+                const o = audioCtx.createOscillator();
+                o.type = i === 2 ? 'square' : 'sawtooth';
+                o.frequency.value = f;
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.001, now);
+                g.gain.exponentialRampToValueAtTime(0.06 + int * 0.04, now + 0.02);
+                g.gain.setValueAtTime(0.04 + int * 0.03, now + dur * 0.5);
+                g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+                const lp = audioCtx.createBiquadFilter();
+                lp.type = 'lowpass'; lp.frequency.value = 1200 + int * 800; lp.Q.value = 1;
+                o.connect(lp); lp.connect(g); g.connect(musicState.masterGain);
+                o.start(now); o.stop(now + dur + 0.05);
+            });
+        }
+
+        // Crash cymbal accent on power stab
+        if (stabBeat % 8 === 0 && int > 0.4) {
+            const dur = 0.3;
             const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
             const d = buf.getChannelData(0);
-            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.04));
+            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.08));
             const s = audioCtx.createBufferSource(); s.buffer = buf;
-            const sg = audioCtx.createGain(); sg.gain.setValueAtTime(0.12 + int * 0.1, now);
+            const sg = audioCtx.createGain(); sg.gain.setValueAtTime(0.08 + int * 0.06, now);
             sg.gain.exponentialRampToValueAtTime(0.001, now + dur);
             const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3000;
             s.connect(hp); hp.connect(sg); sg.connect(musicState.masterGain); s.start(now);
         }
-        if (int > 0.3 && (beat % 2 === 0)) {
-            // Lighter cymbal ticks
-            const dur = 0.02;
-            const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
-            const d = buf.getChannelData(0);
-            for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.004));
-            const s = audioCtx.createBufferSource(); s.buffer = buf;
-            const sg = audioCtx.createGain(); sg.gain.setValueAtTime(0.05 * int, now);
-            const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 6000;
-            s.connect(hp); hp.connect(sg); sg.connect(musicState.masterGain); s.start(now);
-        }
 
-        // NAKKARE (Kettledrum roll on beats before downbeat, intense only)
-        if (int > 0.5 && (beat === 7)) {
-            for (let r = 0; r < 4; r++) {
-                const t = now + r * 0.05;
-                const nk = audioCtx.createOscillator(), nkg = audioCtx.createGain();
-                nk.type = 'sine'; nk.frequency.setValueAtTime(200, t);
-                nk.frequency.exponentialRampToValueAtTime(120, t + 0.04);
-                nkg.gain.setValueAtTime(0.08 + r * 0.03, t);
-                nkg.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-                nk.connect(nkg); nkg.connect(musicState.masterGain); nk.start(t); nk.stop(t + 0.06);
-            }
-        }
-
-        davulBeat++;
+        stabBeat++;
     }, BEAT_MS));
 
-    // === ZURNA MELODY (Heroic Turkish oboe sound) ===
-    let phraseIdx = 0, noteIdx = 0;
-    let currentPhrase = MARCH_PHRASES[0];
+    // === LEAD MELODY - Fast heroic lead runs ===
+    let leadBeat = 0, leadPhrase = 0;
+    const LEAD_PHRASES = [
+        [0,2,3,4,6,4,3,2],   // ascending run & back
+        [6,4,3,2,0,2,3,4],   // descending & rise
+        [0,3,0,4,0,3,0,6],   // rhythmic stabs
+        [4,4,3,3,2,2,0,0],   // doubling descent
+        [0,0,4,4,6,6,4,2],   // building power
+        [6,6,4,6,3,4,2,0],   // heroic call
+    ];
+    let currentLead = LEAD_PHRASES[0];
+    let leadNote = 0;
     musicState.intervals.push(setInterval(() => {
         if (!audioCtx || !musicState.playing) return;
         const now = audioCtx.currentTime;
         const int = musicState.intensity;
+        if (int < 0.4) { leadNote = 0; leadBeat++; return; }
 
-        // Only play melody when intensity > 0.15 (during/near waves)
-        if (int < 0.15) { noteIdx = 0; return; }
+        // Play lead note
+        const freq = LEAD_NOTES[currentLead[leadNote]];
+        const dur = EIGHTH / 1000 * 0.7;
 
-        const scale = int > 0.6 ? HICAZ_HIGH : HICAZ_LOW;
-        const freq = scale[currentPhrase[noteIdx]];
-        const noteDur = BEAT_MS / 1000 * (0.8 + Math.random() * 0.3);
+        const o = audioCtx.createOscillator();
+        o.type = 'square'; o.frequency.value = freq;
+        // Slight pitch slide for expressiveness
+        o.frequency.setValueAtTime(freq * 1.02, now);
+        o.frequency.exponentialRampToValueAtTime(freq, now + 0.03);
 
-        // Zurna sound: sawtooth + bandpass for nasal quality
-        const zur = audioCtx.createOscillator();
-        zur.type = 'sawtooth'; zur.frequency.value = freq;
-        // Add slight vibrato for authenticity
-        const vibLfo = audioCtx.createOscillator();
-        vibLfo.type = 'sine'; vibLfo.frequency.value = 5 + int * 3; // vibrato speed
-        const vibGain = audioCtx.createGain(); vibGain.gain.value = freq * 0.008; // subtle pitch wobble
-        vibLfo.connect(vibGain); vibGain.connect(zur.frequency); vibLfo.start(now);
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0.001, now);
+        g.gain.exponentialRampToValueAtTime(0.07 + int * 0.05, now + 0.01);
+        g.gain.setValueAtTime(0.05 + int * 0.04, now + dur * 0.5);
+        g.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
-        const zurGain = audioCtx.createGain();
-        zurGain.gain.setValueAtTime(0.001, now);
-        zurGain.gain.exponentialRampToValueAtTime(0.12 + int * 0.1, now + 0.02); // sharp attack
-        zurGain.gain.setValueAtTime(0.1 + int * 0.08, now + noteDur * 0.7);
-        zurGain.gain.exponentialRampToValueAtTime(0.001, now + noteDur);
+        const lp = audioCtx.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = 2000 + int * 2000; lp.Q.value = 2;
+        o.connect(lp); lp.connect(g); g.connect(musicState.masterGain);
+        o.start(now); o.stop(now + dur + 0.02);
 
-        // Bandpass filter for nasal zurna tone
-        const bp = audioCtx.createBiquadFilter();
-        bp.type = 'bandpass'; bp.frequency.value = freq * 2.5; bp.Q.value = 2;
-        // Second harmonic emphasis
-        const bp2 = audioCtx.createBiquadFilter();
-        bp2.type = 'peaking'; bp2.frequency.value = freq * 3; bp2.gain.value = 6; bp2.Q.value = 3;
-
-        zur.connect(bp); bp.connect(bp2); bp2.connect(zurGain);
-        zurGain.connect(musicState.masterGain);
-        zur.start(now); zur.stop(now + noteDur + 0.05);
-        vibLfo.stop(now + noteDur + 0.05);
-
-        noteIdx++;
-        if (noteIdx >= currentPhrase.length) {
-            noteIdx = 0;
-            // Pick next phrase - mix sequential and random for variety
-            if (int > 0.7) {
-                // Intense: cycle through heroic phrases
-                phraseIdx = (phraseIdx + 1) % MARCH_PHRASES.length;
-            } else {
-                // Calmer: random phrase selection
-                phraseIdx = Math.floor(Math.random() * MARCH_PHRASES.length);
-            }
-            currentPhrase = MARCH_PHRASES[phraseIdx];
+        leadNote++;
+        if (leadNote >= currentLead.length) {
+            leadNote = 0;
+            leadPhrase = (leadPhrase + 1) % LEAD_PHRASES.length;
+            currentLead = LEAD_PHRASES[leadPhrase];
         }
-    }, BEAT_MS));
+        leadBeat++;
+    }, EIGHTH));
 
-    // === BORU (Brass horn) - Sustained heroic notes on downbeats ===
-    let boruBeat = 0;
+    // === FILL - Tom roll before phrase restart ===
+    let fillCounter = 0;
     musicState.intervals.push(setInterval(() => {
         if (!audioCtx || !musicState.playing) return;
         const now = audioCtx.currentTime;
         const int = musicState.intensity;
-        if (int < 0.3) { boruBeat++; return; }
+        if (int < 0.5) { fillCounter++; return; }
 
-        // Play a sustained brass note every 8 beats
-        if (boruBeat % 8 === 0) {
-            const scale = HICAZ_LOW;
-            const noteChoices = [0, 3, 4, 7]; // D, G, A, D' - strong notes
-            const freq = scale[noteChoices[Math.floor(Math.random() * noteChoices.length)]];
-            const dur = BEAT_MS / 1000 * 4; // sustain for 4 beats
-
-            // Square wave for brass-like tone
-            const br = audioCtx.createOscillator();
-            br.type = 'square'; br.frequency.value = freq;
-            const brGain = audioCtx.createGain();
-            brGain.gain.setValueAtTime(0.001, now);
-            brGain.gain.linearRampToValueAtTime(0.06 + int * 0.04, now + 0.08);
-            brGain.gain.setValueAtTime(0.05 + int * 0.03, now + dur * 0.6);
-            brGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-            const lp = audioCtx.createBiquadFilter();
-            lp.type = 'lowpass'; lp.frequency.value = 800 + int * 400; lp.Q.value = 1;
-            br.connect(lp); lp.connect(brGain); brGain.connect(musicState.masterGain);
-            br.start(now); br.stop(now + dur + 0.05);
+        // Tom fill every 16 beats (4 bars)
+        if (fillCounter % 16 === 15) {
+            const toms = [200, 160, 130, 100]; // high to low
+            toms.forEach((f, i) => {
+                const t = now + i * 0.07;
+                const tk = audioCtx.createOscillator(), tkg = audioCtx.createGain();
+                tk.type = 'sine'; tk.frequency.setValueAtTime(f, t);
+                tk.frequency.exponentialRampToValueAtTime(f * 0.5, t + 0.12);
+                tkg.gain.setValueAtTime(0.15 + int * 0.1, t);
+                tkg.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+                tk.connect(tkg); tkg.connect(musicState.masterGain); tk.start(t); tk.stop(t + 0.16);
+            });
         }
-        boruBeat++;
+        fillCounter++;
     }, BEAT_MS));
 
     // === Intensity update ===
     musicState.intervals.push(setInterval(() => {
         if (!musicState.playing) return;
         if (typeof gameState !== 'undefined' && gameState.waveActive) {
-            musicState.intensityTarget = 0.4 + Math.min(gameState.wave / 15, 1.0) * 0.6;
+            musicState.intensityTarget = 0.5 + Math.min(gameState.wave / 12, 1.0) * 0.5;
         } else {
-            musicState.intensityTarget = 0.1; // gentle march between waves
+            musicState.intensityTarget = 0.2; // steady beat between waves
         }
-        musicState.intensity += (musicState.intensityTarget - musicState.intensity) * 0.03;
-        // Modulate drone volume with intensity
-        if (musicState.droneGain) {
-            musicState.droneGain.gain.setTargetAtTime(0.08 + musicState.intensity * 0.12, audioCtx.currentTime, 0.5);
+        musicState.intensity += (musicState.intensityTarget - musicState.intensity) * 0.04;
+        if (musicState.bassGain) {
+            musicState.bassGain.gain.setTargetAtTime(0.1 + musicState.intensity * 0.15, audioCtx.currentTime, 0.3);
         }
     }, 200));
 
@@ -487,11 +535,8 @@ function stopMusic() {
     const now = audioCtx ? audioCtx.currentTime : 0;
     if (musicState.masterGain) musicState.masterGain.gain.setTargetAtTime(0, now, 0.3);
     setTimeout(() => {
-        try {
-            if (musicState.droneOsc) { musicState.droneOsc.stop(); musicState.droneOsc = null; }
-            if (musicState.droneOsc2) { musicState.droneOsc2.stop(); musicState.droneOsc2 = null; }
-        } catch(e) {}
-        musicState.droneGain = null; musicState.masterGain = null;
+        try { if (musicState.bassOsc) { musicState.bassOsc.stop(); musicState.bassOsc = null; } } catch(e) {}
+        musicState.bassGain = null; musicState.masterGain = null;
         musicState.playing = false; musicState.intensity = 0; musicState.intensityTarget = 0;
     }, 1000);
 }
