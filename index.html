@@ -29,8 +29,19 @@
                 <div id="cp-display">CP: <span id="cp-amount">0</span></div>
             </div>
             <div id="hud-right">
+                <div id="speed-controls">
+                    <span id="speed-label">SPD</span>
+                    <button class="speed-btn active" data-speed="1">1x</button>
+                    <button class="speed-btn" data-speed="2">2x</button>
+                    <button class="speed-btn" data-speed="3">3x</button>
+                </div>
                 <div id="money-display">$<span id="money-amount">2000</span></div>
                 <div id="surrender-count">POWs: <span id="pow-amount">0</span></div>
+                <button id="music-toggle-btn" onclick="toggleMusic()" title="Music ON (click to mute)">&#9835;</button>
+                <div id="save-load-btns">
+                    <button id="save-btn" title="Save game (between waves)">SAVE</button>
+                    <button id="load-btn" title="Load last save">LOAD</button>
+                </div>
             </div>
         </div>
 
@@ -95,6 +106,11 @@
                 <div class="tower-btn-name">Artillery</div>
                 <div class="tower-btn-cost">🔒 200K HP</div>
             </div>
+            <div id="wave-preview-panel">
+                <div id="wave-preview-title">NEXT: WAVE 1</div>
+                <div id="wave-preview-enemies"></div>
+                <div id="wave-preview-total"></div>
+            </div>
             <div id="next-wave-btn">
                 <div id="next-wave-text">SEND WAVE</div>
                 <div id="auto-start-timer"></div>
@@ -129,6 +145,15 @@
                 <div class="stat-row"><span>HP Destroyed:</span><span id="stat-hpdestroyed">0</span></div>
                 <div class="stat-row"><span>Tower HP:</span><span id="stat-towerhp">150 / 150</span></div>
             </div>
+            <div id="target-mode-section">
+                <span id="target-mode-label">TARGET:</span>
+                <div id="target-mode-buttons">
+                    <button class="target-btn active" data-mode="first" title="Target enemy furthest along the path">F</button>
+                    <button class="target-btn" data-mode="last" title="Target enemy earliest on the path">L</button>
+                    <button class="target-btn" data-mode="strongest" title="Target enemy with highest HP">S</button>
+                    <button class="target-btn" data-mode="closest" title="Target nearest enemy to tower">C</button>
+                </div>
+            </div>
             <button id="repair-tower-btn" class="hidden">Repair Tower - $<span id="repair-cost">0</span></button>
             <button id="fuse-tower-btn" class="hidden">Fuse Adjacent Tower (Merge)</button>
             <button id="sell-tower-btn">Sell Tower ($<span id="sell-amount">50</span>)</button>
@@ -141,6 +166,58 @@
                 <p>You survived to <span id="final-wave">0</span> waves</p>
                 <p>Total kills: <span id="final-kills">0</span></p>
                 <button id="restart-btn">PLAY AGAIN</button>
+            </div>
+        </div>
+
+        <!-- Tutorial Overlay -->
+        <div id="tutorial-overlay" class="hidden">
+            <div id="tutorial-highlight"></div>
+            <div id="tutorial-popup">
+                <div id="tutorial-step-indicator"></div>
+                <div id="tutorial-text"></div>
+                <div id="tutorial-buttons">
+                    <button id="tutorial-skip-btn">SKIP TUTORIAL</button>
+                    <button id="tutorial-next-btn">NEXT</button>
+                </div>
+            </div>
+            <div id="tutorial-arrow"></div>
+        </div>
+
+        <!-- Map Selection Screen -->
+        <div id="map-select-screen" class="hidden">
+            <div id="map-select-content">
+                <h1 id="map-select-title">SELECT THEATER OF OPERATIONS</h1>
+                <div id="map-select-divider"></div>
+                <div id="map-cards">
+                    <div class="map-card" data-map="valley">
+                        <div class="map-card-header">
+                            <span class="map-card-name">Valley Pass</span>
+                            <span class="map-card-difficulty difficulty-medium">MEDIUM</span>
+                        </div>
+                        <canvas class="map-preview" data-map="valley" width="192" height="192"></canvas>
+                        <div class="map-card-desc">A winding valley road through the heartland.</div>
+                        <button class="map-select-btn" data-map="valley">DEPLOY HERE</button>
+                    </div>
+                    <div class="map-card" data-map="desert">
+                        <div class="map-card-header">
+                            <span class="map-card-name">Desert Crossing</span>
+                            <span class="map-card-difficulty difficulty-hard">HARD</span>
+                        </div>
+                        <canvas class="map-preview" data-map="desert" width="192" height="192"></canvas>
+                        <div class="map-card-desc">A short S-curve through hostile desert terrain.</div>
+                        <button class="map-select-btn" data-map="desert">DEPLOY HERE</button>
+                    </div>
+                    <div class="map-card" data-map="mountain">
+                        <div class="map-card-header">
+                            <span class="map-card-name">Mountain Ridge</span>
+                            <span class="map-card-difficulty difficulty-easy">EASY</span>
+                        </div>
+                        <canvas class="map-preview" data-map="mountain" width="192" height="192"></canvas>
+                        <div class="map-card-desc">A long zigzag climb gives defenders more time.</div>
+                        <button class="map-select-btn" data-map="mountain">DEPLOY HERE</button>
+                    </div>
+                </div>
+                <button id="map-back-btn">BACK</button>
             </div>
         </div>
 
@@ -159,6 +236,8 @@
                     <div class="start-feature">🏳 Enemy Surrender System</div>
                 </div>
                 <button id="start-btn">DEPLOY FORCES</button>
+                <button id="continue-btn" style="display:none;">CONTINUE</button>
+                <button id="delete-save-btn" style="display:none;">DELETE SAVE</button>
                 <div id="start-hint">Defend your base against endless waves of enemy forces</div>
             </div>
         </div>
